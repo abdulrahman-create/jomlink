@@ -1,0 +1,94 @@
+# ─────────────────────────────────────────────────────────────
+# JOMLINK — Production compose (VPS)
+#
+# Three services:
+#   web     – Next.js standalone server (built by ./Dockerfile)
+#   nginx   – TLS reverse proxy in front of `web`
+#   certbot – Let's Encrypt cert issuance/renewal for the domain
+#
+# The app has NO database container here — its runtime data layer is
+# the self-hosted Supabase instance (PostgREST). Server-only secrets
+# (SUPABASE_SERVICE_ROLE_KEY, ToyyibPay) are passed in from a .env
+# file at runtime, keeping a single, environment-promotable image.
+#
+# USAGE (on the VPS, from jomlink-app/):
+#   cp .env.production.example .env   # then fill in REAL values
+#   docker compose build web
+#   docker compose up -d
+#
+# One-time TLS bootstrap (before nginx has certs) run:
+#   docker compose run --rm certbot certonly --webroot \
+#     --webroot-path=/var/www/certbot -d your-domain.com \
+#     --email you@example.com --agree-tos --no-eff-email
+# ─────────────────────────────────────────────────────────────
+
+name: jomlink
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Public values are INLINED at build time — must be real, not placeholders.
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?set in .env}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?set in .env}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?set in .env}
+    # Important: do NOT publish the web port to the host. Only nginx
+    # reaches it on the internal Docker network. Firewall should expose
+    # only 80/443.
+    expose:
+      - "3000"
+    environment:
+      # Server-only secrets injected at runtime (not inlined).
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?set in .env}
+      TOYYIBPAY_BASE_URL: ${TOYYIBPAY_BASE_URL:-https://dev.toyyibpay.com}
+      TOYYIBPAY_SECRET_KEY: ${TOYYIBPAY_SECRET_KEY:-}
+      TOYYIBPAY_CATEGORY_CODE: ${TOYYIBPAY_CATEGORY_CODE:-}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
+    env_file:
+      - path: .env
+        required: true
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  nginx:
+    image: nginx:1.27-alpine
+    depends_on:
+      - web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./deploy/certbot/conf:/etc/letsencrypt:ro
+      - ./deploy/certbot/www:/var/www/certbot:ro
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  certbot:
+    # Renews certificates daily via `renew`. DNS for your domain must
+    # already point at the VPS public IP.
+    image: certbot/certbot
+    volumes:
+      - ./deploy/certbot/conf:/etc/letsencrypt
+      - ./deploy/certbot/www:/var/www/certbot
+    entrypoint: /bin/sh
+    command: -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done'
+    restart: unless-stopped
+
+networks:
+  default:
+    name: jomlink_net

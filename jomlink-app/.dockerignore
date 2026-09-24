@@ -1,0 +1,37 @@
+# JOMLINK — Docker build context exclusions
+# Keep the image build fast & clean; never leak secrets or local state into the image.
+
+# Dependencies / builds
+node_modules
+.next
+out
+build
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# Local env files (contain real secrets — NEVER ship to a build context)
+.env
+.env.*
+!.env.production.example
+
+# Legacy Prisma runtime artifacts (reference only; not needed by standalone image)
+prisma
+src/generated/prisma
+
+# Source control / docs / tooling
+.git
+.gitignore
+*.md
+docs
+scripts
+
+# Generated graph / IDE cruft
+graphify-out
+.idea
+.vscode
+*.log
+.dockerignore
+README*.md
+
+# Keep the Supabase schema doc available (harmless) but drop payloads
+supabase/*.sql

@@ -1,0 +1,675 @@
+// ─────────────────────────────────────────────────────────────
+// JOMLINK — Prisma Schema (MVP Phase 1)
+// Marketplace for business introductions.
+// Datasource URL is configured in prisma.config.ts (Prisma 7).
+// ─────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ==============================
+// ENUMs
+// ==============================
+
+enum Role {
+  SEEKER
+  LINKER
+  BOTH
+  ADMIN
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  OPERATIONS
+  KYC
+  FINANCE
+  DISPUTE
+  COMPLIANCE
+  SUPPORT
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+  EXPIRED
+  SUSPENDED
+}
+
+enum RelationshipCategory {
+  CURRENT_EMPLOYEE
+  FORMER_EMPLOYEE
+  BUSINESS_PARTNER
+  CLIENT
+  FORMER_CLIENT
+  SUPPLIER
+  CUSTOMER
+  CONSULTANT
+  ADVISOR
+  INVESTOR
+  PROFESSIONAL_CONTACT
+  INDUSTRY_CONTACT
+  ASSOCIATION_MEMBERSHIP
+  GOVERNMENT_PUBLIC_SECTOR
+  OTHER
+}
+
+enum RelationshipVisibility {
+  PUBLIC
+  PLATFORM_ONLY
+  OPPORTUNITY_SPECIFIC
+}
+
+enum OpportunityCategory {
+  BUSINESS_INTRODUCTION
+  EXECUTIVE_MEETING
+  INVESTOR_CONNECTION
+  CUSTOMER_CLIENT_CONNECTION
+  SUPPLIER_CONNECTION
+  DISTRIBUTOR_AGENT_CONNECTION
+  STRATEGIC_PARTNER
+  GOVERNMENT_PUBLIC_SECTOR
+  PROFESSIONAL_EXPERT
+  SITE_VISIT_ACCESS
+  OTHER
+}
+
+enum OpportunityStatus {
+  DRAFT
+  PENDING_PAYMENT
+  ACTIVE
+  PROPOSAL_RECEIVED
+  NEGOTIATION
+  LINKER_SELECTED
+  AWAITING_CONFIRMATION
+  IN_PROGRESS
+  APPOINTMENT_SCHEDULED
+  AWAITING_VERIFICATION
+  COMPLETED
+  DISPUTED
+  FAILED
+  EXPIRED
+  CANCELLED
+}
+
+enum ConfidentialityLevel {
+  PUBLIC
+  MATCHED
+  RESTRICTED
+  PRIVATE_DIRECT
+}
+
+enum ProposalStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+  SELECTED
+  COMPLETED
+}
+
+enum ConnectionDegree {
+  FIRST
+  SECOND
+  THIRD
+}
+
+enum AppointmentStatus {
+  PROPOSED
+  ACKNOWLEDGED
+  REJECTED
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum ConnectionStatus {
+  PENDING_ACKNOWLEDGEMENT
+  IN_PROGRESS
+  AWAITING_VERIFICATION
+  COMPLETED
+  FAILED
+  DISPUTED
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REVERSED
+  REFUNDED
+}
+
+enum TransactionType {
+  OPPORTUNITY_FUNDING
+  ACTIVATION_FEE
+  LINKER_SERVICE_FEE
+  REWARD_RELEASE
+  REFUND
+  PAYOUT
+  WALLET_CREDIT
+  WALLET_DEBIT
+}
+
+enum DisputeStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  CLOSED
+}
+
+enum DisputeOutcome {
+  COMPLETED
+  PARTIALLY_COMPLETED
+  FAILED
+  REFUNDED
+  OTHER
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  SMS
+  PUSH
+}
+
+enum Currency {
+  MYR
+  THB
+  VND
+  IDR
+  INR
+  USD
+}
+
+enum EvidenceType {
+  INTRODUCTION
+  COMMUNICATION
+  MEETING_PHOTO
+  MEETING_SCREENSHOT
+  APPOINTMENT_CONFIRMATION
+  TARGET_ACKNOWLEDGEMENT
+  OTHER
+}
+
+// ==============================
+// IDENTITY
+// ==============================
+
+model users {
+  id                    String        @id @default(cuid())
+  email                 String        @unique
+  emailVerified         Boolean       @default(false)
+  mobile                String
+  mobileVerified        Boolean       @default(false)
+  passwordHash          String
+  fullName              String
+  country               String
+  location              String?
+  profilePhotoUrl       String?
+  role                  Role          @default(SEEKER)
+  status                String        @default("ACTIVE")
+  supabaseUserId        String?       @unique   // link to Supabase Auth user
+  created_at            DateTime      @default(now())
+  updated_at            DateTime      @updatedAt
+
+  profile               member_profiles?
+  memberships           membership[]
+  businessProfiles      business_profiles[]
+  relationships         relationships[]
+  seekerOpportunities   opportunities[] @relation("OpportunitySeeker")
+  linkerProposals       linker_proposals[] @relation("ProposalLinker")
+  notifications         notifications[]
+  reviewsGiven          reviews[] @relation("ReviewAuthor")
+  reviewsReceived       reviews[] @relation("ReviewSubject")
+  transactions          transactions[]
+  auditEntries          audit_logs[]
+  kycRecords            kyc_records[]
+  reputation            reputation_metrics?
+}
+
+model member_profiles {
+  id                    String    @id @default(cuid())
+  userId                String    @unique
+  user                  users     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  headline              String?
+  currentPosition       String?
+  currentOrganisation   String?
+  industry              String?
+  city                  String?
+  region                String?
+  country               String?
+  languages             String[]  @default([])
+  yearsOfExperience     Int?
+  bio                   String?
+  // Linker-facing reputation summary
+  verifiedBadge         Boolean   @default(false)
+  verificationStatus    VerificationStatus @default(UNVERIFIED)
+  successRate           Decimal?  @db.Decimal(5, 2)
+  averageRating         Decimal?  @db.Decimal(3, 2)
+  responseRate          Decimal?  @db.Decimal(5, 2)
+
+  employmentHistory     employment_history[]
+  created_at            DateTime  @default(now())
+  updated_at            DateTime  @updatedAt
+}
+
+model employment_history {
+  id                   String   @id @default(cuid())
+  profileId            String
+  profile              member_profiles @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  organisation         String
+  position             String
+  startDate            DateTime?
+  endDate              DateTime?
+  current              Boolean  @default(false)
+  description          String?
+  created_at           DateTime @default(now())
+}
+
+model business_profiles {
+  id               String        @id @default(cuid())
+  userId           String
+  user             users         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name             String
+  industry         String?
+  description      String?
+  objectives       String[]      @default([])
+  website          String?
+  created_at       DateTime      @default(now())
+  updated_at       DateTime      @updatedAt
+
+  opportunities    opportunities[]
+}
+
+// ==============================
+// RELATIONSHIP GRAPH
+// ==============================
+
+model organisations {
+  id             String   @id @default(cuid())
+  name           String
+  type           String?  // company, government, institution, association...
+  country        String?
+  website        String?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  relationships  relationships[]
+}
+
+model relationships {
+  id                    String               @id @default(cuid())
+  userId                String
+  user                  users                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organisationId        String?
+  organisation          organisations?       @relation(fields: [organisationId], references: [id])
+  entityName            String               // display name when no organisation record
+  category              RelationshipCategory
+  visibility            RelationshipVisibility @default(PUBLIC)
+  connectionDegree      ConnectionDegree     @default(FIRST)
+  relevanceNote         String?              // e.g. "Worked with corporate affairs division"
+  periodLabel           String?
+  verified              Boolean              @default(false)
+  verificationStatus    VerificationStatus   @default(UNVERIFIED)
+  created_at            DateTime             @default(now())
+  updated_at            DateTime             @updatedAt
+
+  verifications         relationship_verifications[]
+  proposalBasis         linker_proposals[]   @relation("ProposalRelationship")
+}
+
+model relationship_verifications {
+  id               String             @id @default(cuid())
+  relationshipId   String
+  relationship     relationships      @relation(fields: [relationshipId], references: [id], onDelete: Cascade)
+  method           String?
+  status           VerificationStatus @default(PENDING)
+  evidence         String?            // file reference
+  reviewedBy       String?            // admin user id
+  reviewedAt       DateTime?
+  notes            String?
+  created_at       DateTime           @default(now())
+}
+
+// ==============================
+// OPPORTUNITY MARKETPLACE
+// ==============================
+
+model opportunities {
+  id                  String                 @id @default(cuid())
+  seekerId            String
+  seeker              users                  @relation("OpportunitySeeker", fields: [seekerId], references: [id], onDelete: Cascade)
+  businessProfileId   String?
+  businessProfile     business_profiles?     @relation(fields: [businessProfileId], references: [id])
+  title               String
+  category            OpportunityCategory
+  targetEntity        String
+  targetRole          String?
+  targetRoleExact     Boolean                @default(true)
+  purpose             String
+  businessDescription String?
+  requiredOutcome     String
+  connectionMethod    String?
+  acceptableAlternatives String?
+  geographicPreference String?
+  deadline            DateTime?
+  offerAmount         Decimal                @db.Decimal(12, 2)
+  currency            Currency               @default(MYR)
+  confidentiality     ConfidentialityLevel   @default(PUBLIC)
+  additionalRequirements String?
+  status              OpportunityStatus      @default(DRAFT)
+  // Funding
+  activationFee       Decimal?               @db.Decimal(12, 2)
+  fundedAmount        Decimal?               @db.Decimal(12, 2)
+  isRestrictedCategory Boolean               @default(false)
+  // Matching
+  matchScore          Int?                   // 0-100 calculated indicator
+  expiresAt           DateTime?
+
+  created_at          DateTime               @default(now())
+  updated_at          DateTime               @updatedAt
+
+  proposals           linker_proposals[]
+  connections         connections[]
+  transactions        transactions[]
+  disputes            disputes[]
+  reviews             reviews[]
+}
+
+// ==============================
+// PROPOSALS & NEGOTIATION
+// ==============================
+
+model linker_proposals {
+  id                   String             @id @default(cuid())
+  opportunityId        String
+  opportunity          opportunities      @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  linkerId             String
+  linker               users              @relation("ProposalLinker", fields: [linkerId], references: [id], onDelete: Cascade)
+  relationshipId       String?
+  relationship         relationships?     @relation("ProposalRelationship", fields: [relationshipId], references: [id])
+  relationshipDeclared String?            // text declaration
+  proposedTarget       String?
+  proposedMethod       String?
+  proposedDeliverable  String?
+  proposedReward       Decimal            @db.Decimal(12, 2)
+  proposedDeadline     DateTime?
+  remarks              String?
+  status               ProposalStatus     @default(SUBMITTED)
+  isTargetSubstitution Boolean            @default(false)
+  substitutionReason   String?
+  // Agreed terms (locked on acceptance)
+  agreedReward         Decimal?           @db.Decimal(12, 2)
+  agreedDeliverable    String?
+  agreedAt             DateTime?
+
+  created_at           DateTime           @default(now())
+  updated_at           DateTime           @updatedAt
+
+  negotiations         proposal_negotiations[]
+  connections          connections[]
+}
+
+model proposal_negotiations {
+  id             String          @id @default(cuid())
+  proposalId     String
+  proposal       linker_proposals @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  fromRole       Role
+  offeredReward  Decimal         @db.Decimal(12, 2)
+  message        String?
+  status         String          @default("COUNTER")
+  created_at     DateTime        @default(now())
+}
+
+// ==============================
+// CONNECTION / APPOINTMENT
+// ==============================
+
+model appointments {
+  id           String             @id @default(cuid())
+  connectionId String
+  connection   connections        @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  date         DateTime
+  location     String?
+  method       String?            // online / physical
+  target       String?
+  remarks      String?
+  status       AppointmentStatus  @default(PROPOSED)
+  created_at   DateTime           @default(now())
+  updated_at   DateTime           @updatedAt
+}
+
+model connections {
+  id               String             @id @default(cuid())
+  opportunityId    String
+  opportunity      opportunities      @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  proposalId       String
+  proposal         linker_proposals   @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  linkerId         String
+  status           ConnectionStatus   @default(PENDING_ACKNOWLEDGEMENT)
+  agreedReward     Decimal?           @db.Decimal(12, 2)
+  targetScheduled  String?
+  completionNotes  String?
+  completedAt      DateTime?
+  autoReleaseAt    DateTime?
+  releaseStatus    String?            // HELD / RELEASED / HELD_BY_DISPUTE
+  created_at       DateTime           @default(now())
+  updated_at       DateTime           @updatedAt
+
+  appointments     appointments[]
+  evidence         connection_evidence[]
+  transactions     transactions[]
+  disputes         disputes[]
+}
+
+model connection_evidence {
+  id             String          @id @default(cuid())
+  connectionId   String
+  connection     connections     @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  type           EvidenceType
+  description    String?
+  fileUrl        String?
+  fileAccessKey  String?         // access-controlled, expiring URL reference
+  approved       Boolean?
+  reviewedBy     String?
+  reviewedAt     DateTime?
+  created_at     DateTime        @default(now())
+}
+
+// ==============================
+// TRANSACTIONS / WALLET
+// ==============================
+
+model transactions {
+  id              String            @id @default(cuid())
+  userId          String
+  user            users             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  opportunityId   String?
+  opportunity     opportunities?    @relation(fields: [opportunityId], references: [id])
+  connectionId    String?
+  connection      connections?      @relation(fields: [connectionId], references: [id])
+  type            TransactionType
+  status          TransactionStatus @default(PENDING)
+  amount          Decimal           @db.Decimal(12, 2)
+  feeRaw          Decimal?          @db.Decimal(12, 2) // amount before fee adjustments
+  currency        Currency          @default(MYR)
+  exchangeRate    Decimal?          @db.Decimal(12, 6)
+  settlementAmount Decimal?         @db.Decimal(12, 2)
+  description     String?
+  reference       String?           // payment gateway reference
+  created_at      DateTime          @default(now())
+  updated_at      DateTime          @updatedAt
+
+  ledgerEntries   transaction_ledger[]
+  payouts         payouts[]
+  refunds         refunds[]
+}
+
+model transaction_ledger {
+  id             String       @id @default(cuid())
+  transactionId  String
+  transaction    transactions @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  account        String       // e.g. ESCROW, SEEKER, LINKER, PLATFORM
+  debit          Decimal      @default(0) @db.Decimal(12, 2)
+  credit         Decimal      @default(0) @db.Decimal(12, 2)
+  created_at     DateTime     @default(now())
+}
+
+model payouts {
+  id             String       @id @default(cuid())
+  transactionId  String
+  transaction    transactions @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  recipientId    String
+  amount         Decimal      @db.Decimal(12, 2)
+  serviceFee     Decimal      @default(0) @db.Decimal(12, 2)
+  netAmount      Decimal      @db.Decimal(12, 2)
+  method         String?
+  status         String       @default("PENDING")
+  releasedAt     DateTime?
+  created_at     DateTime     @default(now())
+}
+
+model refunds {
+  id             String       @id @default(cuid())
+  transactionId  String
+  transaction    transactions @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  recipientId    String
+  amount         Decimal      @db.Decimal(12, 2)
+  reason         String?
+  status         String       @default("PENDING")
+  approvedBy     String?
+  created_at     DateTime     @default(now())
+}
+
+// ==============================
+// TRUST: DISPUTES / REVIEWS / REPUTATION
+// ==============================
+
+model disputes {
+  id             String             @id @default(cuid())
+  opportunityId  String
+  opportunity    opportunities      @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  connectionId   String?
+  connection     connections?       @relation(fields: [connectionId], references: [id])
+  raisedById     String
+  reason         String
+  description    String?
+  evidence       String?
+  status         DisputeStatus      @default(OPEN)
+  outcome        DisputeOutcome?
+  resolutionNote String?
+  resolvedBy     String?
+  resolvedAt     DateTime?
+  created_at     DateTime           @default(now())
+  updated_at     DateTime           @updatedAt
+}
+
+model reviews {
+  id             String        @id @default(cuid())
+  opportunityId  String
+  opportunity    opportunities @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  authorId       String
+  author         users         @relation("ReviewAuthor", fields: [authorId], references: [id])
+  subjectId      String
+  subject        users         @relation("ReviewSubject", fields: [subjectId], references: [id])
+  rating         Int           // 1-5
+  comment        String?
+  created_at     DateTime      @default(now())
+}
+
+model reputation_metrics {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  user                 users    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  completedCount       Int      @default(0)
+  successfulCount      Int      @default(0)
+  successRate          Decimal  @default(0) @db.Decimal(5, 2)
+  averageRating        Decimal  @default(0) @db.Decimal(3, 2)
+  responseRate         Decimal  @default(0) @db.Decimal(5, 2)
+  cancellationCount    Int      @default(0)
+  disputeCount         Int      @default(0)
+  onTimeCount          Int      @default(0)
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
+}
+
+// ==============================
+// NOTIFICATIONS / NOTIFICATIONS
+// ==============================
+
+model notifications {
+  id         String     @id @default(cuid())
+  userId     String
+  user       users      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type       String
+  title      String
+  body       String?
+  channel    NotificationChannel @default(IN_APP)
+  read       Boolean    @default(false)
+  data       Json?
+  created_at DateTime   @default(now())
+}
+
+// ==============================
+// ADMIN / COMPLIANCE
+// ==============================
+
+model kyc_records {
+  id              String             @id @default(cuid())
+  userId          String
+  user            users              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status          VerificationStatus @default(PENDING)
+  documentType    String?
+  documentRef     String?
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  expiryDate      DateTime?
+  notes           String?
+  created_at      DateTime           @default(now())
+  updated_at      DateTime           @updatedAt
+}
+
+model admin_members {
+  id         String    @id @default(cuid())
+  userId     String    @unique
+  role       AdminRole @default(OPERATIONS)
+  permissions String[] @default([])
+  mfaEnabled Boolean   @default(false)
+  created_at DateTime  @default(now())
+}
+
+model audit_logs {
+  id         String   @id @default(cuid())
+  adminId    String?
+  action     String
+  entity     String   // e.g. "REFUND", "KYC_APPROVAL"
+  entityId   String?
+  details    Json?
+  ip         String?
+  created_at DateTime @default(now())
+
+  admin      users?   @relation(fields: [adminId], references: [id])
+}
+
+// ==============================
+// MEMBERSHIP (future multi-account support)
+// ==============================
+
+model membership {
+  id         String   @id @default(cuid())
+  userId     String
+  user       users    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  role       Role     @default(SEEKER)
+  isPrimary  Boolean  @default(false)
+  created_at DateTime @default(now())
+}

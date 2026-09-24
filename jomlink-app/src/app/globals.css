@@ -1,0 +1,154 @@
+@import "tailwindcss";
+
+/* ─────────────────────────────────────────────
+   JOMLINK DESIGN SYSTEM
+   Brand: Carmine #BF0040 · Cotton Candy #F5A3AF
+   Neutrals: Black #000 · White #FEFEFE
+   Style: Trust & Authority marketplace
+   ───────────────────────────────────────────── */
+
+:root {
+  /* Brand palette */
+  --carmine: #BF0040;
+  --carmine-dark: #8A0030;
+  --carmine-deep: #5E0020;
+  --carmine-light: #E0336B;
+  --cotton-candy: #F5A3AF;
+  --cotton-candy-light: #FAD6DB;
+  --black: #000000;
+  --white: #FEFEFE;
+
+  /* Semantic tokens */
+  --color-background: #FDFBFC;
+  --color-foreground: #1A0B11;
+  --color-primary: #BF0040;
+  --color-primary-hover: #A80039;
+  --color-primary-light: #F5A3AF;
+  --color-primary-soft: #FCE9ED;
+  --color-secondary: #5E0020;
+  --color-accent: #BF0040;
+  --color-card: #FFFFFF;
+  --color-muted: #F6EDF0;
+  --color-muted-foreground: #6B5A61;
+  --color-border: #EAD9DE;
+  --color-input: #FFFFFF;
+  --color-ring: #BF0040;
+  --color-success: #1E7D4F;
+  --color-success-bg: #E7F5EE;
+  --color-warning: #9A6B00;
+  --color-warning-bg: #FBF4E2;
+  --color-destructive: #C82B3C;
+  --color-destructive-bg: #FBEAEC;
+
+  /* Radius */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+
+  /* Shadow */
+  --shadow-card: 0 1px 3px rgba(26, 11, 17, 0.08), 0 4px 16px rgba(191, 0, 64, 0.06);
+  --shadow-pop: 0 10px 30px rgba(26, 11, 17, 0.14);
+  --shadow-glow: 0 0 0 1px var(--cotton-candy), 0 6px 24px rgba(191, 0, 64, 0.18);
+}
+
+@theme inline {
+  --color-background: var(--color-background);
+  --color-foreground: var(--color-foreground);
+  --color-primary: var(--color-primary);
+  --color-primary-hover: var(--color-primary-hover);
+  --color-primary-light: var(--color-primary-light);
+  --color-primary-soft: var(--color-primary-soft);
+  --color-secondary: var(--color-secondary);
+  --color-card: var(--color-card);
+  --color-muted: var(--color-muted);
+  --color-muted-foreground: var(--color-muted-foreground);
+  --color-border: var(--color-border);
+  --color-input: var(--color-input);
+  --color-ring: var(--color-ring);
+  --color-success: var(--color-success);
+  --color-success-bg: var(--color-success-bg);
+  --color-warning: var(--color-warning);
+  --color-warning-bg: var(--color-warning-bg);
+  --color-destructive: var(--color-destructive);
+  --color-destructive-bg: var(--color-destructive-bg);
+  --color-carmine: var(--carmine);
+  --color-cotton-candy: var(--cotton-candy);
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-display: var(--font-display), var(--font-geist-sans), ui-sans-serif, sans-serif;
+}
+
+/* Display typeface for headlines */
+.font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+/* Utility: soft rose glow text */
+.brand-glow-text {
+  background: linear-gradient(120deg, var(--carmine) 0%, var(--carmine-light) 55%, var(--carmine-deep) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+* {
+  border-color: var(--color-border);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Typography helpers */
+.text-balance { text-wrap: balance; }
+.text-pretty { text-wrap: pretty; }
+
+/* Focus visibility */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--cotton-candy);
+  border-radius: 8px;
+  border: 2px solid var(--color-background);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--carmine-light); }
+
+/* Utility: brand gradient text */
+.brand-gradient-text {
+  background: linear-gradient(120deg, var(--carmine), var(--carmine-light));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Utility: subtle rose gradient band */
+.brand-band {
+  background: linear-gradient(135deg, var(--carmine) 0%, var(--carmine-dark) 60%, var(--carmine-deep) 100%);
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
