@@ -151,9 +151,20 @@ export default async function DashboardPage() {
       <Card className="overflow-hidden">
         <div className="brand-band px-6 py-6 text-white">
           <div className="flex items-center gap-4">
-            <span className="flex h-16 w-16 items-center justify-center rounded-full bg-white text-2xl font-bold text-primary">
-              {initial}
-            </span>
+            {user.profilePhotoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={user.profilePhotoUrl}
+                alt=""
+                width={64}
+                height={64}
+                className="h-16 w-16 rounded-full object-cover ring-2 ring-white/40"
+              />
+            ) : (
+              <span className="flex h-16 w-16 items-center justify-center rounded-full bg-white text-2xl font-bold text-primary">
+                {initial}
+              </span>
+            )}
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-2xl font-bold">{user.fullName}</h2>

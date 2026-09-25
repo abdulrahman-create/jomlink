@@ -65,7 +65,21 @@
 
 ---
 
-## Key Business Rules (blueprint §9)
+## KYC Implementation Note (2026-09-24)
+
+KYC is **simplified** in the MVP — status + badge only, per the confirmed technical decision:
+
+- **Schema:** `kyc_records` table (user_id, status, document_type, document_ref, reviewed_by, reviewed_at, expiry_date, notes).
+- **Admin flow:** `/admin/kyc` — admin reviews a `kyc_records` row and approves/rejects. On approve, `reviewKycAction` sets the member profile's `verification_status = VERIFIED` and `verified_badge = true` (and the reverse on reject). Audit log written (`KYC_APPROVED` / `KYC_REJECTED`).
+- **Relationship verification:** same page, second tab — admin reviews declared `relationships` (sets `verification_status` + `verified`).
+- **Member-facing submission (added 2026-09-24):** `/dashboard/kyc` — a member uploads an identity document (JPEG/PNG/WebP/PDF, ≤10 MB) to the private `kyc-documents` storage bucket and `submitKycAction` creates a `PENDING` `kyc_records` row. The page shows current status + submission history. Nav item "Verification" added to the dashboard sidebar.
+- **Document storage:** `kyc-documents` bucket is **private** (public=false) — docs are addressed by path only and read server-side via the service-role client; never publicly served. `kyc_records.document_ref` stores the object path (not a public URL.
+.
+- **Admin document preview (added 2026-09-24):** `/api/admin/kyc/[id]/document` — admin-guarded route (`kyc:read`) that generates a 60-second signed URL for the private object and redirects to it. "View document" link shown in the admin KYC queue. Service-role key never leaves the server.
+
+- **Badge display:** `verified_badge` shows as a "Verified" badge on the dashboard header, dashboard identity card, and public member profile.
+
+**Deferred (production hardening):** liveness/selfie, expiry tracking, automated verification providers.
 
 - **RBAC** — no unrestricted internal access.
 - Government category is **restricted**; no guaranteed approvals/tenders.

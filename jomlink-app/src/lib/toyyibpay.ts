@@ -24,7 +24,7 @@ function secretKey(): string {
   const key = process.env.TOYYIBPAY_SECRET_KEY;
   if (!key) {
     throw new Error(
-      "TOYYIBPAY_SECRET_KEY is not set. Add it to .env.local (server-only)."
+      "TOYYIBPAY_SECRET_KEY is not set. Add it to .env (server-only)."
     );
   }
   return key;

@@ -13,6 +13,7 @@ export interface JomlinkUserRow {
   full_name: string;
   country: string;
   location: string | null;
+  profile_photo_url: string | null;
   role: "SEEKER" | "LINKER" | "BOTH" | "ADMIN";
   status: string;
   supabase_user_id: string | null;

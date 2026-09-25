@@ -66,6 +66,7 @@ export const getCurrentUser = cache(async () => {
     mobile: row.mobile,
     country: row.country,
     location: row.location,
+    profilePhotoUrl: row.profile_photo_url,
     role: row.role,
     supabaseUserId: row.supabase_user_id,
     profile: profile

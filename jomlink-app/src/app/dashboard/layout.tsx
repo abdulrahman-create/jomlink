@@ -12,6 +12,7 @@ import {
   Wallet,
   Cable,
   Bell,
+  ShieldCheck,
 } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
 import { getCurrentAdmin } from "@/lib/rbac";
@@ -25,6 +26,7 @@ const NAV = [
   { href: "/dashboard/business", label: "My Business", icon: Briefcase },
   { href: "/dashboard/proposals", label: "My Proposals", icon: FileText },
   { href: "/dashboard/connections", label: "Connections", icon: Cable },
+  { href: "/dashboard/kyc", label: "Verification", icon: ShieldCheck },
   { href: "/dashboard/wallet", label: "Wallet", icon: Wallet },
   { href: "/dashboard/notifications", label: "Notifications", icon: Bell },
   { href: "/marketplace", label: "Marketplace", icon: Handshake },
@@ -71,9 +73,20 @@ export default async function DashboardLayout({
                 Admin Portal
               </Link>
             )}
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-bold text-white">
-              {initial}
-            </span>
+            {user.profilePhotoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={user.profilePhotoUrl}
+                alt=""
+                width={36}
+                height={36}
+                className="h-9 w-9 rounded-full object-cover ring-1 ring-border"
+              />
+            ) : (
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-bold text-white">
+                {initial}
+              </span>
+            )}
             <form action={logoutMember}>
               <button
                 type="submit"

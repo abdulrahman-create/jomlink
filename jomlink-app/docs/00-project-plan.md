@@ -1,7 +1,7 @@
-# 📋 Jomlink — Project Plan
+﻿# 📋 Jomlink — Project Plan
 
 **Version:** 1.0 · **Status:** Planning
-**Updated:** 2026-09-18
+**Updated:** 2026-09-24
 
 A marketplace for business introductions — connecting people who need access to people, organisations and opportunities with people who hold legitimate professional relationships (Linkers).
 
@@ -29,7 +29,7 @@ We build **phase by phase**, validating each phase before moving on. This plan d
 | Schema isolation | `PGRST_DB_SCHEMAS` exposes `jomlink` | `.schema('jomlink').from('table')` pattern |
 | Auth | Supabase Auth (self-hosted) | Anon key public; SERVICE_ROLE server-only; users tagged `app='jomlink'` to avoid conflicts |
 | Auth isolation | `app='jomlink'` tag check | `getCurrentUser()` only matches/link Jomlink-tagged users |
-| Payments | Sandbox/stubbed gateway (planned) | Escrow, 10% activation fee, 3% linker fee, 7-day auto-release |
+| Payments | Sandbox/stubbed gateway (planned) | Escrow,  10% activation fee,  3% linker fee,  7-day auto-release |
 | Verification | Simplified (status + badge) | Full document KYC deferred |
 
 ---
@@ -149,15 +149,30 @@ Already built:
 - Reputation metrics (success rate, avg rating) updated + shown on public profile ✅
 - Build passes ✅
 
+**Phase 7 (Admin / RBAC + Disputes):**
+- RBAC helper + admin guard (`src/lib/rbac.ts`); role-scoped admin layout + sidebar (`/admin`) ✅
+- Member management (search/suspend/reinstate/role), opportunity moderation (approve/flag/reject), restricted-category toggle ✅
+- KYC status management (simplified): admin reviews `kyc_records` → sets `verification_status` + `verified_badge` on member profile; relationship verification queue ✅
+- Dispute workflow (raise → payment hold → review → resolve: REFUNDED/FAILED → escrow→seeker; COMPLETED → escrow→linker net + 3%; PARTIALLY_COMPLETED → 50/50) ✅
+- Audit trail (`audit_logs`) for financial + sensitive admin actions ✅
+- Build passes ✅
+
+**Phase 8 (Dashboard + Wallet + Polish) — FINAL MVP:**
+- Role-aware Seeker+Linker dashboard hub (`/dashboard`) ✅
+- Notifications (in-app, mark read), wallet top-up via ToyyibPay (Malaysian gateway, FPX+card, sandbox) ✅
+- Public info pages (`/how-it-works`, `/fees`, `/trust-safety`, `/prohibited`) ✅
+- Profile basic-details editing + avatar upload (Supabase storage bucket) ✅
+- Build passes (26 routes). **MVP COMPLETE — ready for Malaysia/MYR pilot.**
+
 ---
 
 ## 7. Next Action
 
-Begin **Phase 7 — Admin / RBAC + disputes**:
-1. Read `docs/phase-07-admin.md`.
-2. Add admin role + admin dashboard.
-3. Implement dispute creation + resolution.
-4. Add review/evidence moderation.
+**MVP is feature-complete.** Remaining work is production hardening:
+1. KYC hardening: liveness/selfie, expiry tracking, automated verification providers. (Member-facing doc upload + admin review + admin document preview are built.)
+2. Live payment gateway (ToyyibPay sandbox → production keys, webhook tunnel for callback).
+3. Fraud/risk scoring engine + advanced matching (Phase 2 marketplace intelligence).
+4. Business accounts, multi-country, multi-currency(architecture-ready, not built).
 
 ---
 
@@ -165,4 +180,6 @@ Begin **Phase 7 — Admin / RBAC + disputes**:
 
 - **2026-09-18** — Created project plan + all phase docs (01–08). Phase 0 scaffold complete. Ready to start Phase 1.
 - **2026-09-18** — Phase 1 complete: initial migration (26 tables), seed (admin + demo + orgs), register/login/logout with Supabase Auth + Prisma, `getCurrentUser()` with auto-provisioning (resolves redirect loop for existing Supabase users), route protection via `proxy.ts`. Build passes. Personal logo + icon integrated. Ready for Phase 2.
-- **2026-09-18** — Phase 2 complete: dashboard sidebar layout, profile edit, employment history CRUD, relationship declarations (category/visibility/degree), business profiles + role toggle, public profile page (privacy-safe). Build passes. Ready for Phase 3.
+- **2026-09-18** — Phase 2 complete: dashboard sidebar layout, profile edit, employment history CRUD, relationship declarations (category/visibility/degree), business profiles + role toggle, public profile page (privacy-safe). Build passes. Ready for Phase 3.- **2026-09-24** — Phases 7 +  8 complete (admin/RBAC/disputes + dashboard/wallet/polish. MVP feature-complete. KYC is **simplified**: admin reviews `kyc_records` status → sets `verification_status` + `verified_badge` on the member profile; there is **no member-facing KYC submission flow** (no document upload/liveness) — full document KYC remains deferred. Wallet top-up wired to ToyyibPay sandbox.
+- **2026-09-24** — Member-facing KYC submission flow added: `/dashboard/kyc` (upload identity doc → private `kyc-documents` bucket → PENDING `kyc_records` row → admin `/admin/kyc` review queue). Files: `src/app/actions/kyc.ts` (`submitKycAction`), `src/app/dashboard/kyc/` (page + `kyc-form.tsx`), `getKycRecordsByUser` query helper, `kyc-documents` storage bucket in schema SQL, "Verification" nav item. Build passes (27 routes).
+- **2026-09-24** — Admin KYC document preview added: `/api/admin/kyc/[id]/document` (admin-guarded `kyc:read`, generates 60s signed URL for the private object and redirects). "View document" link in the admin KYC queue. Build passes (28 routes.

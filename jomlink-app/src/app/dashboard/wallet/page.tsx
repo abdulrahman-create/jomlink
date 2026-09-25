@@ -48,8 +48,14 @@ export default async function WalletPage() {
     getRefundsByRecipient(user.id),
   ]);
 
-  // Simple balance: credits (in) − debits (out) across the user's transactions.
-  const inAmount = transactions.reduce((sum: number, t: TransactionRow) => {
+  // Balance counts SETTLED money only. A top-up is created as PENDING before the
+  // member is redirected to ToyyibPay, so counting it here would show funds that
+  // have not actually been paid. Only COMPLETED transactions affect the balance.
+  const settled = transactions.filter(
+    (t: TransactionRow) => t.status === "COMPLETED"
+  );
+
+  const inAmount = settled.reduce((sum: number, t: TransactionRow) => {
     return t.type === "REFUND" ||
       t.type === "PAYOUT" ||
       t.type === "REWARD_RELEASE" ||
@@ -57,7 +63,7 @@ export default async function WalletPage() {
       ? sum + Number(t.amount || 0)
       : sum;
   }, 0);
-  const outAmount = transactions.reduce((sum: number, t: TransactionRow) => {
+  const outAmount = settled.reduce((sum: number, t: TransactionRow) => {
     return t.type === "OPPORTUNITY_FUNDING" ||
       t.type === "ACTIVATION_FEE" ||
       t.type === "LINKER_SERVICE_FEE" ||
@@ -67,20 +73,22 @@ export default async function WalletPage() {
   }, 0);
   const balance = inAmount - outAmount;
 
-  // Total topped up by this member (for the wallet summary).
-  const totalToppedUp = transactions
+  // Total topped up by this member (settled only).
+  const totalToppedUp = settled
+    .filter((t: TransactionRow) => t.type === "WALLET_CREDIT")
+    .reduce((sum: number, t: TransactionRow) => sum + Number(t.amount || 0), 0);
+
+  // Top-ups started but not yet confirmed (awaiting ToyyibPay payment).
+  const pendingTopUps = transactions
     .filter(
       (t: TransactionRow) =>
-        t.type === "WALLET_CREDIT" && t.status === "COMPLETED"
+        t.type === "WALLET_CREDIT" && t.status === "PENDING"
     )
     .reduce((sum: number, t: TransactionRow) => sum + Number(t.amount || 0), 0);
 
   // Pending escrow: rewards funded but not yet released or refunded.
-  const pendingEscrow = transactions
-    .filter(
-      (t: TransactionRow) =>
-        t.type === "OPPORTUNITY_FUNDING" && t.status === "COMPLETED"
-    )
+  const pendingEscrow = settled
+    .filter((t: TransactionRow) => t.type === "OPPORTUNITY_FUNDING")
     .reduce((sum: number, t: TransactionRow) => sum + Number(t.amount || 0), 0);
   const pendingPayouts = payouts
     .filter((p: PayoutRow) => p.status !== "RELEASED" && p.status !== "COMPLETED")
@@ -104,6 +112,11 @@ export default async function WalletPage() {
               <Wallet className="h-4 w-4" aria-hidden="true" /> Balance
             </p>
             <p className="mt-1 text-2xl font-bold">{money(balance)}</p>
+            {pendingTopUps > 0 && (
+              <p className="mt-0.5 text-xs text-warning">
+                {money(pendingTopUps)} top-up pending
+              </p>
+            )}
           </CardContent>
         </Card>
         <Card>

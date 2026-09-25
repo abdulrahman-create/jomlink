@@ -51,9 +51,20 @@ export default async function PublicMemberPage({
         <Card className="overflow-hidden">
           <div className="brand-band px-6 py-8 text-white">
             <div className="flex items-center gap-4">
-              <span className="flex h-20 w-20 items-center justify-center rounded-full bg-white text-3xl font-bold text-primary">
-                {initial}
-              </span>
+              {member.profile_photo_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={member.profile_photo_url}
+                  alt=""
+                  width={80}
+                  height={80}
+                  className="h-20 w-20 rounded-full object-cover ring-2 ring-white/40"
+                />
+              ) : (
+                <span className="flex h-20 w-20 items-center justify-center rounded-full bg-white text-3xl font-bold text-primary">
+                  {initial}
+                </span>
+              )}
               <div>
                 <div className="flex items-center gap-2">
                   <h1 className="text-3xl font-bold">{member.full_name}</h1>

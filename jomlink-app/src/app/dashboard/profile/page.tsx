@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ProfileForm } from "./profile-form";
 import { EmploymentSection } from "./employment-form";
+import { BasicDetailsForm } from "./basic-details-form";
 
 export const metadata = { title: "Profile" };
 
@@ -27,6 +28,21 @@ export default async function ProfilePage() {
           {user.profile?.verifiedBadge ? "Verified" : user.profile?.verificationStatus ?? "UNVERIFIED"}
         </Badge>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Basic details</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <BasicDetailsForm
+            photoUrl={user.profilePhotoUrl}
+            fullName={user.fullName ?? ""}
+            mobile={user.mobile}
+            country={user.country}
+            location={user.location}
+          />
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

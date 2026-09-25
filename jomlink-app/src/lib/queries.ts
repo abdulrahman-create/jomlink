@@ -255,6 +255,40 @@ export async function setUserRole(userId: string, role: string) {
   if (error) throw error;
 }
 
+// ── Basic member details ─────────────────────────────────────
+/** Update a member's own editable basic details (full name, mobile, country, location). */
+export async function updateMemberDetails(
+  userId: string,
+  values: {
+    full_name?: string;
+    mobile?: string;
+    country?: string;
+    location?: string | null;
+    profile_photo_url?: string | null;
+  }
+) {
+  // Only include provided fields so a partial update (e.g. avatar-only) never
+  // nulls the other columns. `profile_photo_url: null` is intentional (removal).
+  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (values.full_name !== undefined) patch.full_name = values.full_name;
+  if (values.mobile !== undefined) patch.mobile = values.mobile;
+  if (values.country !== undefined) patch.country = values.country;
+  if (values.location !== undefined) patch.location = values.location;
+  if (values.profile_photo_url !== undefined) {
+    patch.profile_photo_url = values.profile_photo_url;
+  }
+
+  const { data, error } = await sc()
+    .from("users")
+    .update(patch)
+    .eq("id", userId)
+    .eq("app", JOMLINK_APP_TAG)
+    .select("*")
+    .maybeSingle();
+  if (error) throw error;
+  return data as JomlinkUserRow | null;
+}
+
 // ── User / public profile ────────────────────────────────────
 export async function getUserById(
   userId: string
@@ -1092,6 +1126,19 @@ export async function createKycRecord(values: Record<string, unknown>) {
     .single();
   if (error) throw error;
   return data as KycRecordRow;
+}
+
+/** List a member's own KYC records (newest first). */
+export async function getKycRecordsByUser(
+  userId: string
+): Promise<KycRecordRow[]> {
+  const { data, error } = await sc()
+    .from("kyc_records")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as KycRecordRow[];
 }
 
 export async function updateKycRecord(

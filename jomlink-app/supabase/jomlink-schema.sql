@@ -1,4 +1,4 @@
--- ═══════════════════════════════════════════════════════════════
+﻿-- ═══════════════════════════════════════════════════════════════
 -- JOMLINK — Supabase Schema Migration
 -- Run this ONCE in Supabase → SQL Editor.
 --
@@ -509,6 +509,44 @@ exception when duplicate_object then null; end $$;
 grant all on all tables in schema jomlink to service_role, authenticated;
 grant all on all sequences in schema jomlink to service_role, authenticated;
 
+-- ── 6. Storage bucket for profile photos ──────────────────────
+-- Requires the `storage` extension (Supabase has it by default). Creates a
+-- private `avatars` bucket. Uploads/deletes go through the SERVICE_ROLE key
+-- (server-only server actions), so RLS policies on storage.objects are not
+-- needed — service_role bypasses RLS. Objects are served via the storage API
+-- using public URLs generated from the bucket + path.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'avatars',
+  'avatars',
+  true,
+  5 * 1024 * 1024,  -- 5 MB
+  array['image/jpeg','image/png','image/webp']
+)
+on conflict (id) do update set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
+-- ── 6b. Storage bucket for KYC identity documents ──────────────
+-- Private bucket (public=false) — KYC docs are sensitive and must NOT be
+-- publicly served. Uploads/deletes go through the SERVICE_ROLE key (server-only
+-- server actions), so RLS policies on storage.objects are not needed —
+-- service_role bypasses RLS. Objects are addressed by path only; the admin
+-- review flow reads the stored path/URL server-side.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'kyc-documents',
+  'kyc-documents',
+  false,
+  10 * 1024 * 1024,  --  10 MB
+  array['image/jpeg','image/png','image/webp','application/pdf']
+)
+on conflict (id) do update set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
 -- Done. ✅
--- Next: the Jomlink app (supabase-js, service-role) reads/writes
+-- Next:the Jomlink app (supabase-js, service-role) reads/writes
 --       `jomlink.*` and tags its auth users with app='jomlink'.

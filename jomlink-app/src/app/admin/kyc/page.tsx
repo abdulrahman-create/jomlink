@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ShieldCheck, UserCheck, CheckCircle2, XCircle, Clock, ExternalLink } from "lucide-react";
+import { ShieldCheck, UserCheck, CheckCircle2, XCircle, Clock, ExternalLink, FileSearch } from "lucide-react";
 import { requireAdmin } from "@/lib/rbac";
 import { listKycRecords, listRelationshipsForAdmin } from "@/lib/queries";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -94,8 +94,19 @@ export default async function AdminKycPage({
                           {k.document_type || "Passport / National ID"}
                         </div>
                         {k.document_ref && (
-                          <div className="text-[11px] text-muted-foreground font-mono">
-                            Ref: {k.document_ref}
+                          <div className="mt-1 flex items-center gap-2">
+                            <span className="text-[11px] text-muted-foreground font-mono">
+                              Ref: {k.document_ref}
+                            </span>
+                            <a
+                              href={`/api/admin/kyc/${k.id}/document`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline"
+                            >
+                              <FileSearch className="h-3 w-3" aria-hidden="true" />
+                              View document
+                            </a>
                           </div>
                         )}
                       </td>
