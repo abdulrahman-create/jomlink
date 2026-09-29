@@ -26,7 +26,7 @@ const STEPS = [
   },
   {
     title: "5. Completion and payment",
-    body: "Once the connection is confirmed complete, the reward is released to the Linker after a 7-day hold. Jomlink deducts a 3% service fee from the payout.",
+    body: "Once the connection is confirmed complete, the reward is released to the Linker after a 7-day hold. Jomlink deducts a 10% service fee from the payout.",
   },
 ];
 
@@ -60,11 +60,18 @@ export default function HowItWorksPage() {
       <InfoSection title="Fees at a glance">
         <ul className="list-disc space-y-2 pl-5">
           <li>
-            Seeker activation fee:{" "}
+            Posting deposit:{" "}
             <strong className="text-foreground">
-              {Math.round(FEES.ACTIVATION_FEE_RATE * 100)}%
+              {Math.round(FEES.POSTING_DEPOSIT_RATE * 100)}%
             </strong>{" "}
-            of the reward, paid when funding the opportunity.
+            of the reward, deducted from your wallet when you post. Refundable less a{" "}
+            {formatMYR(FEES.LISTING_FEE)} listing fee if you cancel before a Linker is
+            selected.
+          </li>
+          <li>
+            Reward settlement: the full reward is charged only when you{" "}
+            <strong className="text-foreground">accept a Linker</strong>, then held in
+            escrow until completion.
           </li>
           <li>
             Linker service fee:{" "}
@@ -80,8 +87,9 @@ export default function HowItWorksPage() {
           </li>
         </ul>
         <p className="text-sm">
-          Example: a {formatMYR(1000)} reward costs the Seeker {formatMYR(1100)} to
-          fund, and pays the Linker {formatMYR(970)} net on completion.
+          Example: a {formatMYR(1000)} reward costs {formatMYR(100)} to post, then{" "}
+          {formatMYR(1000)} when you accept a Linker, and pays the Linker{" "}
+          {formatMYR(1000 * (1 - FEES.LINKER_SERVICE_FEE_RATE))} net on completion.
         </p>
       </InfoSection>
 

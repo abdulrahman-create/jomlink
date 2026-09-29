@@ -29,7 +29,7 @@ We build **phase by phase**, validating each phase before moving on. This plan d
 | Schema isolation | `PGRST_DB_SCHEMAS` exposes `jomlink` | `.schema('jomlink').from('table')` pattern |
 | Auth | Supabase Auth (self-hosted) | Anon key public; SERVICE_ROLE server-only; users tagged `app='jomlink'` to avoid conflicts |
 | Auth isolation | `app='jomlink'` tag check | `getCurrentUser()` only matches/link Jomlink-tagged users |
-| Payments | Sandbox/stubbed gateway (planned) | Escrow,  10% activation fee,  3% linker fee,  7-day auto-release |
+| Payments | Sandbox/stubbed gateway (planned) | 10% refundable posting deposit (wallet auto-deduct, less RM10 listing fee on pre-selection cancel), full reward settlement at Linker acceptance, escrow, 10% linker fee, 7-day auto-release |
 | Verification | Simplified (status + badge) | Full document KYC deferred |
 
 ---
@@ -113,7 +113,7 @@ Already built:
 
 **Phase 3 (Opportunity Marketplace + Matching):**
 - Opportunity creation wizard (`/opportunities/new`) with all blueprint fields ✅
-- Funding/escrow math module (`src/lib/funding.ts`): 10% activation fee + reward escrow ✅
+- Posting model (`src/lib/funding.ts`): **10% refundable posting deposit** auto-deducted from the Seeker's wallet; posting blocked when credit is insufficient. Cancelling before a Linker is selected refunds the deposit less the **RM10 non-refundable listing fee** ✅
 - Publish flow: DRAFT → PENDING_PAYMENT → ACTIVE (simulated transactions) ✅
 - Marketplace browse (`/marketplace`) with search + filters (category, country, reward) ✅
 - Opportunity detail page (`/opportunities/[id]`) with funding breakdown ✅
@@ -132,8 +132,8 @@ Already built:
 
 **Phase 5 (Transactions / Escrow):**
 - Double-entry ledger helper (`src/lib/ledger.ts`) — balanced debit/credit pairs ✅
-- Funding action records reward escrow + 10% activation fee via `transaction_ledger` ✅
-- Reward release on completion with 3% linker service fee deducted (net payout) ✅
+- Posting deducts the 10% deposit; accepting a Linker settles the **full reward** into escrow via `transaction_ledger` ✅
+- Reward release on completion with 10% linker service fee deducted (net payout) ✅
 - Refund flow for failed/cancelled/expired opportunities ✅
 - Payout + refund records; 7-day auto-release rule (cron-ready) ✅
 - Wallet page (`/dashboard/wallet`) with balance, transactions, payouts, refunds ✅
@@ -153,7 +153,7 @@ Already built:
 - RBAC helper + admin guard (`src/lib/rbac.ts`); role-scoped admin layout + sidebar (`/admin`) ✅
 - Member management (search/suspend/reinstate/role), opportunity moderation (approve/flag/reject), restricted-category toggle ✅
 - KYC status management (simplified): admin reviews `kyc_records` → sets `verification_status` + `verified_badge` on member profile; relationship verification queue ✅
-- Dispute workflow (raise → payment hold → review → resolve: REFUNDED/FAILED → escrow→seeker; COMPLETED → escrow→linker net + 3%; PARTIALLY_COMPLETED → 50/50) ✅
+- Dispute workflow (raise → payment hold → review → resolve: REFUNDED/FAILED → escrow→seeker; COMPLETED → escrow→linker net + 10%; PARTIALLY_COMPLETED → 50/50) ✅
 - Audit trail (`audit_logs`) for financial + sensitive admin actions ✅
 - Build passes ✅
 

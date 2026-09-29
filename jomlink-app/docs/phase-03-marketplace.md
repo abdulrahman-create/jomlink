@@ -9,7 +9,7 @@
 1. Let Seekers **create structured Opportunities** (category → target → role → outcome → reward → deadline).
 2. Let Linkers **browse, search and filter** live opportunities.
 3. Implement a **rule-based match score** indicating relevance.
-4. Handle the **funding model**: 10% activation fee + reward escrow (payment stubbed for now, calculated).
+4. Handle the **posting model**: a **refundable 10% posting deposit** auto-deducted from the Seeker's wallet at post time (payment stubbed for now, calculated), less a flat **RM10 non-refundable listing fee** if cancelled before a Linker is selected. The reward itself is **not** charged at posting.
 5. Restrict the **Government / Public Sector** category.
 
 ---
@@ -19,7 +19,7 @@
 ### In scope
 - Opportunity creation wizard (`/opportunities/new`) with all blueprint fields
 - Publish → status goes `DRAFT → PENDING_PAYMENT → ACTIVE`
-- Activation fee (10%) + escrow amount calculation (recorded in `transactions` as simulated)
+- **10% posting deposit** (refundable service charge, less the RM10 listing fee on pre-selection cancellation) auto-deducted from the Seeker's wallet at post time; posting blocked when wallet credit is insufficient (recorded in `transactions` as simulated)
 - Marketplace browse (`/marketplace`) with search + filters (category, country, reward, deadline, verified-only)
 - Opportunity detail page (`/opportunities/[id]`)
 - Rule-based **match score** (entity relationship, role, industry, geography, reputation)
@@ -40,7 +40,8 @@
 - [x] Published opp appears in marketplace + is searchable/filterable
 - [x] Match score is computed and displayed
 - [x] Government category is flagged restricted
-- [x] Funding math (10% + reward) is correct in the transaction record
+- [x] Posting deposit math (10% of reward) is correct in the transaction record
+- [x] Posting is blocked when the Seeker's wallet has insufficient credit for the 10% deposit
 
 ---
 
@@ -74,3 +75,7 @@
 - Target role can be **Exact** or **Flexible/Equivalent**.
 - Match score = relevance indicator, **not** a guarantee of access.
 - Public listing only shows non-sensitive info (Confidentiality level respected).
+- **Posting deposit:** posting an Opportunity requires a **10% deposit** (of the reward), auto-deducted from the Seeker's wallet. If the Seeker cancels **before any Linker is selected**, the deposit is refunded **less the RM10 non-refundable listing fee**; once a Linker is selected the deposit is consumed.
+- **Unlimited posting:** a Seeker may post as many Opportunities as they wish, provided each posting is covered by sufficient wallet credit.
+- **Insufficient credit blocks posting:** the Seeker cannot post if their wallet cannot cover the 10% deposit.
+- **Reward is not charged at posting:** the full reward is only settled later, when the Seeker **accepts a Linker's submission** (see Phase 5).

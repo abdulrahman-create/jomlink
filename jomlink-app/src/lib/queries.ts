@@ -19,6 +19,7 @@ import type {
   ReputationRow,
   AdminMemberRow,
   KycRecordRow,
+  KycBiometricRow,
   DisputeRow,
   AuditLogRow,
   NotificationRow,
@@ -637,6 +638,41 @@ export async function getTransactionsByUser(userId: string) {
   return data ?? [];
 }
 
+/**
+ * Settled wallet balance for a member (MYR).
+ *
+ * Only COMPLETED transactions count — a top-up is created as PENDING before the
+ * member is redirected to the gateway, so counting it would show funds that have
+ * not actually been paid. Mirrors the wallet page's balance math exactly.
+ *
+ *   IN  : REFUND, PAYOUT, REWARD_RELEASE, WALLET_CREDIT
+ *   OUT : OPPORTUNITY_FUNDING, POSTING_DEPOSIT, LISTING_FEE, ACTIVATION_FEE,
+ *         LINKER_SERVICE_FEE, WALLET_DEBIT
+ */
+export async function getWalletBalance(userId: string): Promise<number> {
+  const transactions = (await getTransactionsByUser(userId)) as TransactionRow[];
+  const settled = transactions.filter((t) => t.status === "COMPLETED");
+  const inAmount = settled.reduce((sum, t) => {
+    return t.type === "REFUND" ||
+      t.type === "PAYOUT" ||
+      t.type === "REWARD_RELEASE" ||
+      t.type === "WALLET_CREDIT"
+      ? sum + Number(t.amount || 0)
+      : sum;
+  }, 0);
+  const outAmount = settled.reduce((sum, t) => {
+    return t.type === "OPPORTUNITY_FUNDING" ||
+      t.type === "POSTING_DEPOSIT" ||
+      t.type === "LISTING_FEE" ||
+      t.type === "ACTIVATION_FEE" ||
+      t.type === "LINKER_SERVICE_FEE" ||
+      t.type === "WALLET_DEBIT"
+      ? sum + Number(t.amount || 0)
+      : sum;
+  }, 0);
+  return Math.round((inAmount - outAmount + Number.EPSILON) * 100) / 100;
+}
+
 export async function getTransactionsByOpportunity(opportunityId: string) {
   const { data, error } = await sc()
     .from("transactions")
@@ -1153,6 +1189,127 @@ export async function updateKycRecord(
     .maybeSingle();
   if (error) throw error;
   return (data as KycRecordRow | null) ?? null;
+}
+
+// ── KYC biometrics (face + ID captures for future ML) ─────────
+export async function createKycBiometric(
+  values: Record<string, unknown>
+): Promise<KycBiometricRow> {
+  const { data, error } = await sc()
+    .from("kyc_biometrics")
+    .insert(values)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data as KycBiometricRow;
+}
+
+/** A member's own biometric captures (newest first). */
+export async function getKycBiometricsByUser(
+  userId: string
+): Promise<KycBiometricRow[]> {
+  const { data, error } = await sc()
+    .from("kyc_biometrics")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as KycBiometricRow[];
+}
+
+export async function getKycBiometricById(
+  id: string
+): Promise<KycBiometricRow | null> {
+  const { data, error } = await sc()
+    .from("kyc_biometrics")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as KycBiometricRow | null) ?? null;
+}
+
+/** All biometric captures with the owning member, for the admin review queue. */
+export async function listKycBiometrics(params?: {
+  labelStatus?: string;
+  limit?: number;
+}) {
+  let query = sc()
+    .from("kyc_biometrics")
+    .select("*, users!kyc_biometrics_user_id_fkey(full_name, email)")
+    .order("created_at", { ascending: false });
+
+  if (params?.labelStatus && params.labelStatus !== "ALL") {
+    query = query.eq("label_status", params.labelStatus);
+  }
+  if (params?.limit) {
+    query = query.limit(params.limit);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data ?? []) as (KycBiometricRow & {
+    users?: { full_name: string; email: string } | null;
+  })[];
+}
+
+/** Label a capture (MATCH / NO_MATCH / UNUSABLE) for ML training. */
+export async function labelKycBiometric(
+  id: string,
+  labelStatus: string,
+  labelledBy: string
+): Promise<KycBiometricRow | null> {
+  const { data, error } = await sc()
+    .from("kyc_biometrics")
+    .update({
+      label_status: labelStatus,
+      labelled_by: labelledBy,
+      labelled_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .select("*")
+    .maybeSingle();
+  if (error) throw error;
+  return (data as KycBiometricRow | null) ?? null;
+}
+
+/** Aggregate counts per label — a light dashboard for dataset readiness. */
+export async function getBiometricDatasetStats(): Promise<
+  Record<string, number>
+> {
+  const { data, error } = await sc()
+    .from("kyc_biometrics")
+    .select("label_status");
+  if (error) throw error;
+  const stats: Record<string, number> = {
+    UNLABELLED: 0,
+    MATCH: 0,
+    NO_MATCH: 0,
+    UNUSABLE: 0,
+  };
+  for (const row of (data ?? []) as { label_status: string }[]) {
+    stats[row.label_status] = (stats[row.label_status] ?? 0) + 1;
+  }
+  return stats;
+}
+
+/** Record/withdraw biometric-consent on the member's `users` row. */
+export async function setBiometricConsent(
+  userId: string,
+  consent: boolean,
+  version: string
+): Promise<void> {
+  const { error } = await sc()
+    .from("users")
+    .update({
+      biometric_consent: consent,
+      biometric_consent_at: consent ? new Date().toISOString() : null,
+      biometric_consent_version: consent ? version : null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", userId);
+  if (error) throw error;
 }
 
 export async function listRelationshipsForAdmin(params?: {

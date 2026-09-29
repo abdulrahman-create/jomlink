@@ -9,15 +9,22 @@ import {
   updateOpportunityIfOwned,
   getOpportunityById,
   createTransaction,
+  createLedgerEntry,
+  getWalletBalance,
 } from "@/lib/queries";
-import { computeFunding } from "@/lib/funding";
-import { OPPORTUNITY_CATEGORIES } from "@/lib/constants";
+import { postingDepositFor } from "@/lib/funding";
+import { doubleEntry, accounts } from "@/lib/ledger";
+import { OPPORTUNITY_CATEGORIES, FEES, formatMYR } from "@/lib/constants";
 
 // ── Validation ──────────────────────────────────────────────
 const categoryValues = OPPORTUNITY_CATEGORIES.map((c) => c.value) as [
   string,
   ...string[],
 ];
+
+// The 10% posting deposit must cover the flat RM10 listing fee, so the reward
+// has a floor (RM100 by default). See blueprint §3.9.
+const MIN_REWARD = FEES.MIN_OPPORTUNITY_REWARD;
 
 const OpportunitySchema = z.object({
   title: z.string().min(5, "Title is required").max(160),
@@ -32,7 +39,17 @@ const OpportunitySchema = z.object({
   acceptableAlternatives: z.string().max(500).optional().or(z.literal("")),
   geographicPreference: z.string().max(100).optional().or(z.literal("")),
   deadline: z.coerce.date().optional(),
-  offerAmount: z.coerce.number().min(1, "Reward must be more than 0").max(1_000_000_000),
+  offerAmount: z.coerce
+    .number()
+    .min(
+      MIN_REWARD,
+      `Reward must be at least ${formatMYR(
+        MIN_REWARD
+      )} so the 10% posting deposit covers the ${formatMYR(
+        FEES.LISTING_FEE
+      )} listing fee`
+    )
+    .max(1_000_000_000),
   confidentiality: z.enum(["PUBLIC", "MATCHED", "RESTRICTED", "PRIVATE_DIRECT"]).default("PUBLIC"),
   additionalRequirements: z.string().max(1000).optional().or(z.literal("")),
 });
@@ -48,8 +65,8 @@ const RESTRICTED_CATEGORY = "GOVERNMENT_PUBLIC_SECTOR";
 
 /**
  * Create a NEW opportunity.
- * The Seekers posts a Draft. They can either leave it as DRAFT or publish it
- * immediately (DRAFT → PENDING_PAYMENT, funding computed + transaction stubbed).
+ * The Seeker posts a Draft. They can either leave it as DRAFT or publish it
+ * immediately (DRAFT → ACTIVE, 10% posting deposit deducted from the wallet).
  */
 export async function createOpportunityAction(
   prevState: OpportunityState | undefined,
@@ -117,9 +134,17 @@ export async function createOpportunityAction(
 
 /**
  * Publish an existing DRAFT opportunity.
- * Computes funding (10% activation fee + reward escrow) and records a simulated
- * ("stubbed") transaction so the amounts are visible. Status DRAFT →
- * PENDING_PAYMENT. (No real payment in Phase 3.)
+ *
+ * Posting requires a REFUNDABLE 10% posting deposit (of the reward), which is
+ * auto-deducted from the Seeker's wallet. Posting is blocked when the wallet
+ * cannot cover the deposit. The reward itself is NOT charged here — it is only
+ * settled later, when the Seeker accepts a Linker's submission.
+ *
+ * If the Seeker cancels BEFORE any Linker is selected, the deposit is refunded
+ * less the flat non-refundable listing fee (RM10). Once a Linker is selected the
+ * deposit is consumed.
+ *
+ * Status: DRAFT → ACTIVE (the opportunity goes live immediately).
  */
 export async function publishOpportunityAction(
   prevState: OpportunityState | undefined,
@@ -137,81 +162,57 @@ export async function publishOpportunityAction(
     return { error: "Only draft opportunities can be published." };
   }
 
-  const funding = computeFunding(Number(opp.offer_amount) || 0);
+  const deposit = postingDepositFor(Number(opp.offer_amount) || 0);
 
-  // Simulated payment records (Phase 3 stubs).
+  // Posting is blocked unless the wallet can cover the 10% deposit.
+  const balance = await getWalletBalance(user.id);
+  if (balance < deposit) {
+    return {
+      error: `Insufficient wallet credit. Posting requires a ${formatMYR(
+        deposit
+      )} deposit (10% of the reward), but your balance is ${formatMYR(
+        balance
+      )}. Top up your wallet and try again.`,
+    };
+  }
+
   try {
-    // 1) Reward held in escrow (OPPORTUNITY_FUNDING).
-    await createTransaction({
+    // 1) Posting deposit → platform (POSTING_DEPOSIT). Refundable less the
+    //    listing fee if the Seeker cancels before selecting a Linker.
+    const depositTx = await createTransaction({
       user_id: user.id,
       opportunity_id: opp.id,
-      type: "OPPORTUNITY_FUNDING",
-      status: "PENDING",
-      amount: funding.reward,
+      type: "POSTING_DEPOSIT",
+      status: "COMPLETED",
+      amount: deposit,
+      fee_raw: deposit,
       currency: "MYR",
-      description: `Reward escrow for "${opp.title}"`,
-      reference: `OPP-FUND-${opp.id.slice(0, 8)}-${Date.now()}`,
+      description: `Posting deposit (10%) for "${opp.title}"`,
+      reference: `OPP-DEP-${opp.id.slice(0, 8)}-${Date.now()}`,
     });
-    // 2) Activation fee (10%).
-    await createTransaction({
-      user_id: user.id,
-      opportunity_id: opp.id,
-      type: "ACTIVATION_FEE",
-      status: "PENDING",
-      amount: funding.activationFee,
-      fee_raw: funding.activationFee,
-      currency: "MYR",
-      description: `Activation fee (${Math.round(
-        (funding.activationFee / (funding.reward || 1)) * 100
-      )}%) for "${opp.title}"`,
-      reference: `OPP-ACT-${opp.id.slice(0, 8)}-${Date.now()}`,
-    });
+    for (const e of doubleEntry(
+      accounts.wallet(user.id),
+      accounts.platformActivation,
+      deposit
+    )) {
+      await createLedgerEntry({ transaction_id: depositTx.id, ...e });
+    }
 
-    await updateOpportunityIfOwned(
-      opp.id,
-      user.id,
-      {
-        status: "PENDING_PAYMENT",
-        activation_fee: funding.activationFee,
-        funded_amount: funding.escrowAmount,
-      }
-    );
+    // 2) Opportunity goes live. Reward is NOT funded yet (funded_amount = 0).
+    await updateOpportunityIfOwned(opp.id, user.id, {
+      status: "ACTIVE",
+      activation_fee: deposit,
+      funded_amount: 0,
+    });
 
     revalidatePath("/marketplace");
     revalidatePath("/opportunities/" + opp.id);
     revalidatePath("/dashboard");
+    revalidatePath("/dashboard/wallet");
     return { success: true, opportunityId: opp.id };
   } catch (e: unknown) {
     console.error("publishOpportunityAction error", e);
     return { error: "Could not publish the opportunity. Please try again." };
-  }
-}
-
-/** Simulated payment confirmation: PENDING_PAYMENT → ACTIVE (Phase 3 stub). */
-export async function confirmFundingAction(
-  prevState: OpportunityState | undefined,
-  formData: FormData
-): Promise<OpportunityState> {
-  const user = await getCurrentUser();
-  if (!user) return { error: "Not authenticated." };
-
-  const oppId = String(formData.get("id") || "");
-  const opp = oppId ? await getOpportunityById(oppId) : null;
-  if (!opp || opp.seeker_id !== user.id) {
-    return { error: "Opportunity not found or not yours." };
-  }
-  if (opp.status !== "PENDING_PAYMENT") {
-    return { error: "This opportunity is not awaiting funding." };
-  }
-
-  try {
-    await updateOpportunityIfOwned(opp.id, user.id, { status: "ACTIVE" });
-    revalidatePath("/marketplace");
-    revalidatePath("/opportunities/" + opp.id);
-    return { success: true, opportunityId: opp.id };
-  } catch (e: unknown) {
-    console.error("confirmFundingAction error", e);
-    return { error: "Could not activate the opportunity." };
   }
 }
 

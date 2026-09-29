@@ -4,30 +4,58 @@ import { FEES, formatMYR } from "@/lib/constants";
 export const metadata = {
   title: "Fees & Pricing · Jomlink",
   description:
-    "Transparent Jomlink fees: a 10% Seeker activation fee, a 3% Linker service fee, and a 7-day escrow release window. No hidden charges.",
+    "Transparent Jomlink fees: a refundable 10% posting deposit (less a RM10 listing fee on cancellation), full reward settlement on Linker acceptance, a 10% Linker service fee, and a 7-day escrow release window. No hidden charges.",
 };
 
 export default function FeesPage() {
-  const activation = Math.round(FEES.ACTIVATION_FEE_RATE * 100);
+  const deposit = Math.round(FEES.POSTING_DEPOSIT_RATE * 100);
   const service = Math.round(FEES.LINKER_SERVICE_FEE_RATE * 100);
+  const listingFee = formatMYR(FEES.LISTING_FEE);
 
   return (
     <InfoPage
       eyebrow="Pricing"
       title="Fees & pricing"
-      intro="Jomlink charges two simple, transparent fees. There are no listing fees, no subscription, and no hidden charges."
+      intro="Jomlink charges two simple, transparent fees. There are no subscriptions and no hidden charges."
       cta={{ href: "/opportunities/new", label: "Post an opportunity" }}
     >
-      <InfoSection title="Seeker activation fee">
+      <InfoSection title="Posting deposit">
         <p>
-          When you fund an opportunity, Jomlink charges a{" "}
-          <strong className="text-foreground">{activation}%</strong> activation fee on
-          the reward amount. This secures the opportunity and covers platform and
-          payment costs.
+          When you post an opportunity, Jomlink charges a{" "}
+          <strong className="text-foreground">{deposit}%</strong> posting deposit on
+          the reward amount. It is deducted automatically from your wallet. The deposit{" "}
+          <strong className="text-foreground">includes</strong> a flat{" "}
+          <strong className="text-foreground">{listingFee} listing fee</strong> — the
+          listing fee is charged <strong className="text-foreground">inside</strong> the
+          deposit, not in addition to it.
         </p>
         <p className="text-sm">
-          A {formatMYR(1000)} reward therefore requires {formatMYR(1100)} to fund:{" "}
-          {formatMYR(1000)} held in escrow plus {formatMYR(100)} activation fee.
+          A {formatMYR(1000)} reward therefore requires {formatMYR(100)} in wallet
+          credit to post; {listingFee} of that is the listing fee and{" "}
+          {formatMYR(90)} is refundable. Because the {listingFee} sits inside the
+          deposit, the minimum reward is {formatMYR(FEES.MIN_OPPORTUNITY_REWARD)}.
+        </p>
+        <p className="text-sm">
+          <strong className="text-foreground">What happens to the deposit:</strong> if
+          you cancel <em>before a Linker is selected</em>, {formatMYR(90)} of a{" "}
+          {formatMYR(100)} deposit is refunded and the {listingFee} listing fee is
+          retained. On successful completion the whole deposit is consumed. After a
+          Linker is selected, a failure or expiry refunds only the reward — the deposit
+          is consumed.
+        </p>
+      </InfoSection>
+
+      <InfoSection title="Reward settlement">
+        <p>
+          The reward itself is <strong className="text-foreground">not</strong> charged
+          when you post. It is only settled when you{" "}
+          <strong className="text-foreground">accept a Linker&apos;s submission</strong>.
+          At that point your wallet must hold the full agreed reward, which is then held
+          in escrow until the connection is verified complete.
+        </p>
+        <p className="text-sm">
+          A {formatMYR(1000)} reward requires {formatMYR(1000)} in wallet credit at the
+          moment you accept a Linker.
         </p>
       </InfoSection>
 
@@ -38,8 +66,9 @@ export default function FeesPage() {
           Linker&apos;s payout.
         </p>
         <p className="text-sm">
-          A {formatMYR(1000)} reward pays the Linker {formatMYR(970)} net after the{" "}
-          {formatMYR(30)} service fee.
+          A {formatMYR(1000)} reward pays the Linker{" "}
+          {formatMYR(1000 * (1 - FEES.LINKER_SERVICE_FEE_RATE))} net after the{" "}
+          {formatMYR(1000 * FEES.LINKER_SERVICE_FEE_RATE)} service fee.
         </p>
       </InfoSection>
 
@@ -52,12 +81,17 @@ export default function FeesPage() {
         </p>
       </InfoSection>
 
-      <InfoSection title="Refunds">
+      <InfoSection title="Refunds &amp; cancellation">
         <p>
-          If an opportunity fails, is cancelled, expires, or is resolved in the
-          Seeker&apos;s favour after a dispute, the escrowed reward is refunded to the
-          Seeker. The activation fee is non-refundable once the opportunity is
-          published.
+          If you cancel a posted opportunity <strong className="text-foreground">before
+          a Linker is selected</strong>, your {deposit}% posting deposit is refunded less
+          the {listingFee} listing fee.
+        </p>
+        <p>
+          If an opportunity fails, expires, or is resolved in the Seeker&apos;s favour
+          after a dispute, the escrowed <strong>reward</strong> is refunded to the
+          Seeker. Once a Linker has been selected, the posting deposit is consumed (it is
+          no longer refundable).
         </p>
       </InfoSection>
 

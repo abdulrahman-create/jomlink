@@ -10,11 +10,23 @@ import {
   updateProposal,
   updateOpportunityIfOwned,
   createConnection,
+  createTransaction,
+  createLedgerEntry,
+  getWalletBalance,
 } from "@/lib/queries";
+import { doubleEntry, accounts } from "@/lib/ledger";
+import { FEES, formatMYR } from "@/lib/constants";
 
 // ── Validation ──────────────────────────────────────────────
+// The agreed reward must stay at or above the platform floor so the 10%
+// posting deposit always covers the RM10 listing fee (blueprint §3.9).
+const MIN_REWARD = FEES.MIN_OPPORTUNITY_REWARD;
+
 const CounterSchema = z.object({
-  offeredReward: z.coerce.number().min(1).max(1_000_000_000),
+  offeredReward: z.coerce
+    .number()
+    .min(MIN_REWARD, `Reward must be at least ${formatMYR(MIN_REWARD)}`)
+    .max(1_000_000_000),
   message: z.string().max(1000).optional().or(z.literal("")),
 });
 
@@ -109,6 +121,13 @@ export async function acceptTermsAction(
   const agreedReward = Number(formData.get("agreedReward") || proposal.proposed_reward);
   const agreedDeliverable = String(formData.get("agreedDeliverable") || proposal.proposed_deliverable || "");
 
+  // Reward floor: the agreed reward must still cover the RM10 listing fee.
+  if (!Number.isFinite(agreedReward) || agreedReward < MIN_REWARD) {
+    return {
+      error: `The agreed reward must be at least ${formatMYR(MIN_REWARD)}.`,
+    };
+  }
+
   try {
     await updateProposal(proposal.id, {
       status: "ACCEPTED",
@@ -127,6 +146,13 @@ export async function acceptTermsAction(
 
 /**
  * Seeker selects a Linker's proposal → opportunity becomes LINKER_SELECTED.
+ *
+ * Accepting a Linker requires FULL SETTLEMENT of the agreed reward: the Seeker's
+ * wallet must cover it, and the reward is then deducted and held in ESCROW until
+ * verified completion. (The 10% posting deposit was already paid at post time
+ * and is refundable less the listing fee only until a Linker is selected, after
+ * which it is consumed.)
+ *
  * Terms are locked (agreed_reward/deliverable) and the proposal is SELECTED.
  */
 export async function selectLinkerAction(
@@ -152,14 +178,57 @@ export async function selectLinkerAction(
   const agreedReward = Number(formData.get("agreedReward") || proposal.proposed_reward);
   const agreedDeliverable = String(formData.get("agreedDeliverable") || proposal.proposed_deliverable || "");
 
+  // Reward floor: the agreed reward must still cover the RM10 listing fee.
+  if (!Number.isFinite(agreedReward) || agreedReward < MIN_REWARD) {
+    return {
+      error: `The agreed reward must be at least ${formatMYR(MIN_REWARD)}.`,
+    };
+  }
+
+  // Full settlement: the wallet must cover the full agreed reward.
+  const balance = await getWalletBalance(user.id);
+  if (balance < agreedReward) {
+    return {
+      error: `Insufficient wallet credit. Accepting this Linker requires full settlement of the ${formatMYR(
+        agreedReward
+      )} reward, but your balance is ${formatMYR(
+        balance
+      )}. Top up your wallet and try again.`,
+    };
+  }
+
   try {
+    // 1) Full reward → escrow (OPPORTUNITY_FUNDING).
+    const fundTx = await createTransaction({
+      user_id: user.id,
+      opportunity_id: opp.id,
+      type: "OPPORTUNITY_FUNDING",
+      status: "COMPLETED",
+      amount: agreedReward,
+      currency: "MYR",
+      description: `Reward escrow for "${opp.title}"`,
+      reference: `OPP-FUND-${opp.id.slice(0, 8)}-${Date.now()}`,
+    });
+    for (const e of doubleEntry(
+      accounts.wallet(user.id),
+      accounts.escrow(opp.id),
+      agreedReward
+    )) {
+      await createLedgerEntry({ transaction_id: fundTx.id, ...e });
+    }
+
+    // 2) Lock terms + select the proposal.
     await updateProposal(proposal.id, {
       status: "SELECTED",
       agreed_reward: agreedReward,
       agreed_deliverable: agreedDeliverable || null,
       agreed_at: new Date().toISOString(),
     });
-    await updateOpportunityIfOwned(opp.id, user.id, { status: "LINKER_SELECTED" });
+    await updateOpportunityIfOwned(opp.id, user.id, {
+      status: "LINKER_SELECTED",
+      linker_id: proposal.linker_id,
+      funded_amount: agreedReward,
+    });
     // Open a connection for the workflow (appointment → evidence → completion).
     await createConnection({
       opportunity_id: opp.id,
@@ -170,6 +239,7 @@ export async function selectLinkerAction(
     });
     revalidatePath("/opportunities/" + opp.id);
     revalidatePath("/opportunities/" + opp.id + "/proposals");
+    revalidatePath("/dashboard/wallet");
     return { success: true };
   } catch (e: unknown) {
     console.error("selectLinkerAction error", e);

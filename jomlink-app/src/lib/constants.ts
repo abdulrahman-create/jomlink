@@ -10,10 +10,21 @@ export const PLATFORM = {
 } as const;
 
 export const FEES = {
-  // Seeker pays 10% of the opportunity reward as activation/security fee.
-  ACTIVATION_FEE_RATE: 0.10,
-  // Linker pays 3% service fee on each successful payout.
-  LINKER_SERVICE_FEE_RATE: 0.03,
+  // Seeker pays a REFUNDABLE 10% posting deposit (of the reward) when posting
+  // an Opportunity. It is auto-deducted from the Seeker's wallet. If the Seeker
+  // cancels BEFORE any Linker is selected, the deposit is refunded LESS the
+  // non-refundable listing fee below. Once a Linker is selected the deposit is
+  // consumed (the agreed reward is escrowed separately at that point).
+  POSTING_DEPOSIT_RATE: 0.10,
+  // Non-refundable listing fee (MYR) deducted from the posting deposit on a
+  // pre-selection cancellation. Retained by the platform for listing,
+  // moderation and matching services (blueprint §3.9).
+  LISTING_FEE: 10,
+  // Minimum Opportunity reward (MYR). The 10% posting deposit must be at least
+  // the RM10 listing fee, so the reward floor is LISTING_FEE / POSTING_DEPOSIT_RATE.
+  MIN_OPPORTUNITY_REWARD: 10 / 0.10,
+  // Linker pays 10% service fee on each successful payout.
+  LINKER_SERVICE_FEE_RATE: 0.10,
   // Escrow auto-release window after completion (days).
   RELEASE_WAIT_DAYS: 7,
 } as const;
@@ -25,6 +36,12 @@ export const WALLET = {
   // Preset amounts offered in the top-up UI.
   TOPUP_PRESETS: [50, 100, 250, 500, 1000],
 } as const;
+
+/**
+ * KYC biometric consent wording version. Bump this whenever the consent copy
+ * changes so we retain which wording each member agreed to (see docs).
+ */
+export const BIOMETRIC_CONSENT_VERSION = "v1";
 
 /** Opportunity categories surfaced in the marketplace UI. */
 export const OPPORTUNITY_CATEGORIES = [

@@ -11,6 +11,7 @@ import {
   getKycRecordById,
   updateKycRecord,
   updateRelationshipAdmin,
+  labelKycBiometric,
   createTransaction,
   recordLedgerEntries,
   createRefund,
@@ -119,7 +120,7 @@ export async function moderateOpportunityAction(formData: FormData) {
 
     const entries = doubleEntry(
       accounts.escrow(opp.id),
-      accounts.seeker(opp.seeker_id),
+      accounts.wallet(opp.seeker_id),
       refundAmount
     );
     if (entries.length > 0) {
@@ -256,4 +257,43 @@ export async function reviewRelationshipAction(formData: FormData) {
 
   revalidatePath("/admin/kyc");
   revalidatePath("/admin");
+}
+
+/**
+ * Label a biometric capture for ML training.
+ *
+ * `MATCH`     — the face clearly belongs to the ID document holder.
+ * `NO_MATCH`  — the face does not match the document.
+ * `UNUSABLE`  — bad image; exclude from training.
+ *
+ * These manual labels become the ground-truth for the future face-match model.
+ */
+export async function labelBiometricAction(formData: FormData) {
+  const admin = await requireAdmin("kyc:write");
+  const biometricId = formData.get("biometricId") as string;
+  const labelStatus = formData.get("labelStatus") as
+    | "MATCH"
+    | "NO_MATCH"
+    | "UNUSABLE"
+    | "UNLABELLED";
+
+  if (!biometricId || !labelStatus) {
+    throw new Error("Biometric ID and label are required");
+  }
+
+  await labelKycBiometric(biometricId, labelStatus, admin.user.id);
+
+  await recordAuditLog({
+    adminId: admin.user.id,
+    action: AUDIT_ACTIONS.KYC_APPROVED,
+    entity: "KYC_BIOMETRIC",
+    entityId: biometricId,
+    details: {
+      labelStatus,
+      labelledBy: admin.user.email,
+      note: "Biometric training label",
+    },
+  });
+
+  revalidatePath("/admin/kyc");
 }

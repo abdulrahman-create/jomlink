@@ -168,7 +168,7 @@ export async function resolveDisputeAction(formData: FormData) {
 
       const entries = doubleEntry(
         accounts.escrow(opp.id),
-        accounts.seeker(opp.seeker_id),
+        accounts.wallet(opp.seeker_id),
         escrowTotal
       );
       if (entries.length > 0) {
@@ -252,7 +252,7 @@ export async function resolveDisputeAction(formData: FormData) {
       });
       await recordLedgerEntries(
         refundTxn.id,
-        doubleEntry(accounts.escrow(opp.id), accounts.seeker(opp.seeker_id), splitAmount)
+        doubleEntry(accounts.escrow(opp.id), accounts.wallet(opp.seeker_id), splitAmount)
       );
 
       // Release half to Linker

@@ -57,7 +57,7 @@ do $$ begin
   create type jomlink.transaction_status as enum ('PENDING','COMPLETED','FAILED','REVERSED','REFUNDED');
 exception when duplicate_object then null; end $$;
 do $$ begin
-  create type jomlink.transaction_type as enum ('OPPORTUNITY_FUNDING','ACTIVATION_FEE','LINKER_SERVICE_FEE','REWARD_RELEASE','REFUND','PAYOUT','WALLET_CREDIT','WALLET_DEBIT');
+  create type jomlink.transaction_type as enum ('OPPORTUNITY_FUNDING','POSTING_DEPOSIT','LISTING_FEE','ACTIVATION_FEE','LINKER_SERVICE_FEE','REWARD_RELEASE','REFUND','PAYOUT','WALLET_CREDIT','WALLET_DEBIT');
 exception when duplicate_object then null; end $$;
 do $$ begin
   create type jomlink.dispute_status as enum ('OPEN','UNDER_REVIEW','RESOLVED','CLOSED');
@@ -94,6 +94,9 @@ create table if not exists jomlink.users (
   status             text not null default 'ACTIVE',
   supabase_user_id   text unique,
   app                text not null default 'jomlink',  -- auth isolation tag
+  biometric_consent        boolean not null default false,
+  biometric_consent_at     timestamptz,
+  biometric_consent_version text,
   created_at         timestamptz not null default now(),
   updated_at         timestamptz not null default now()
 );
@@ -192,6 +195,7 @@ create table if not exists jomlink.opportunities (
   confidentiality             jomlink.confidentiality_level not null default 'PUBLIC',
   additional_requirements     text,
   status                      jomlink.opportunity_status not null default 'DRAFT',
+  linker_id                   text references jomlink.users(id),
   activation_fee              numeric(12,2),
   funded_amount               numeric(12,2),
   is_restricted_category      boolean not null default false,
@@ -394,6 +398,41 @@ create table if not exists jomlink.kyc_records (
   updated_at      timestamptz not null default now()
 );
 
+-- ── KYC biometrics (face + ID capture for future ML face-match) ──
+-- Stores a member's CONSENTED face selfie + ID document image + capture
+-- quality metadata. This is a DATA-COLLECTION pipeline ONLY — no automated
+-- face matching is performed today. The rows form a labelled dataset for
+-- training an in-house face-verification model later (see docs).
+--
+-- Privacy: images live in the PRIVATE `kyc-biometrics` bucket (public=false).
+-- Only the raw object paths are stored here (never public URLs). Rows are
+-- deletable on member request (`purgeBiometricData`), and consent is explicit
+-- and revocable (`users.biometric_consent`).
+create table if not exists jomlink.kyc_biometrics (
+  id                 text primary key default gen_random_uuid()::text,
+  user_id            text not null references jomlink.users(id) on delete cascade,
+  kyc_record_id      text references jomlink.kyc_records(id) on delete set null,
+  selfie_path        text not null,          -- storage path in `kyc-biometrics`
+  id_document_path   text not null,          -- storage path in `kyc-biometrics`
+  face_width         int,
+  face_height        int,
+  face_confidence    numeric(5,2),           -- detector confidence 0-100 (client)
+  capture_device     text,                   -- user-agent / device hint
+  capture_source     text default 'WEB_CAMERA',
+  liveness_passed    boolean default false,  -- client-side heuristic only (MVP)
+  consent_version    text not null default 'v1',
+  consented_at       timestamptz not null default now(),
+  label_status       text not null default 'UNLABELLED', -- UNLABELLED | MATCH | NO_MATCH | UNUSABLE
+  labelled_by        text,                   -- admin/reviewer id
+  labelled_at        timestamptz,
+  purge_requested_at timestamptz,            -- set when deletion is requested
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now()
+);
+
+create index if not exists kyc_biometrics_user_idx on jomlink.kyc_biometrics (user_id);
+create index if not exists kyc_biometrics_label_idx on jomlink.kyc_biometrics (label_status);
+
 create table if not exists jomlink.admin_members (
   id           text primary key default gen_random_uuid()::text,
   user_id      text unique not null references jomlink.users(id) on delete cascade,
@@ -541,6 +580,25 @@ values (
   false,
   10 * 1024 * 1024,  --  10 MB
   array['image/jpeg','image/png','image/webp','application/pdf']
+)
+on conflict (id) do update set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
+-- ── 6c. Storage bucket for KYC biometrics (face + ID images) ───
+-- Private bucket (public=false) — biometric images are the most sensitive data
+-- Jomlink holds and must NEVER be publicly served. Uploads go through the
+-- SERVICE_ROLE key (server-only server actions); service_role bypasses RLS.
+-- Objects are addressed by path only. Access is limited to the member (their
+-- own records) and admins with kyc:read (served via short-lived signed URLs).
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'kyc-biometrics',
+  'kyc-biometrics',
+  false,
+  10 * 1024 * 1024,  --  10 MB
+  array['image/jpeg','image/png','image/webp']
 )
 on conflict (id) do update set
   public = excluded.public,

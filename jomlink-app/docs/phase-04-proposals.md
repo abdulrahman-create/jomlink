@@ -23,6 +23,7 @@
 - Target substitution with explicit Seeker acknowledgement
 - Terms **locking** on mutual acceptance
 - Linker selection (Seeker picks one proposal → `LINKER_SELECTED`)
+- **Full reward settlement** required at acceptance — the Seeker's wallet must cover the full agreed reward, which is then held in escrow
 - Proposal statuses throughout lifecycle
 
 ### Out of scope (later phases)
@@ -40,6 +41,7 @@
 - [x] Both sides can negotiate reward (+ counter-offers stored)
 - [x] Target substitution can be acknowledged or rejected by Seeker
 - [x] Seeker can select a linker; agreed terms are locked
+- [x] Accepting a Linker requires **full settlement of the reward** in the Seeker's wallet (held in escrow)
 
 ---
 
@@ -72,3 +74,4 @@
 - Exact personal contact info is hidden until a later stage.
 - If Seeker rejects a target substitution → the connection does not proceed, Linker not paid for that outcome.
 - Agreed commercial terms become **locked** once both confirm.
+- **Full reward settlement at acceptance:** the Seeker must have the **full agreed reward** available in their wallet before accepting a Linker's submission. The reward is deducted and held in escrow at that point (the 10% posting deposit was already paid at post time; it is refundable less the RM10 listing fee only until a Linker is selected, after which it is consumed).

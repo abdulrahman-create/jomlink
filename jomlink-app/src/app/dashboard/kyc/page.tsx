@@ -1,10 +1,11 @@
 import { getCurrentUser } from "@/lib/auth";
-import { getKycRecordsByUser } from "@/lib/queries";
+import { getKycRecordsByUser, getKycBiometricsByUser } from "@/lib/queries";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ShieldCheck, Clock, CheckCircle2, XCircle } from "lucide-react";
+import { ShieldCheck, Clock, CheckCircle2, XCircle, ScanFace } from "lucide-react";
 import { formatDate } from "@/lib/constants";
 import { KycForm } from "./kyc-form";
+import { BiometricKycForm } from "./biometric-form";
 
 export const metadata = { title: "Identity Verification" };
 
@@ -22,6 +23,7 @@ export default async function KycPage() {
   if (!user) return null;
 
   const records = await getKycRecordsByUser(user.id);
+  const biometrics = await getKycBiometricsByUser(user.id);
   const latest = records[0] ?? null;
   const isVerified = user.profile?.verifiedBadge === true;
 
@@ -88,6 +90,45 @@ export default async function KycPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Biometric capture — face + ID, for automated verification (data collection) */}
+      <Card className="border-primary/30">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <ScanFace className="h-5 w-5 text-primary" aria-hidden="true" />
+            Help build automated verification
+          </CardTitle>
+          <CardDescription>
+            Capture a live face photo and your ID together. This opt-in dataset lets us train
+            our own face-match model — so future verification is instant instead of manual.
+            Your images are stored privately and are never shown publicly.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <BiometricKycForm />
+
+          {biometrics.length > 0 && (
+            <div className="rounded-md border border-border bg-muted/40 p-3">
+              <p className="text-xs font-semibold text-muted-foreground">
+                Your previous captures ({biometrics.length})
+              </p>
+              <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                {biometrics.map((b) => (
+                  <li key={b.id} className="flex items-center justify-between gap-3">
+                    <span>
+                      Captured {formatDate(b.created_at)}
+                      {b.purge_requested_at ? " · deletion requested" : ""}
+                    </span>
+                    <Badge variant="outline">
+                      {b.label_status.replace(/_/g, " ").toLowerCase()}
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Submission history */}
       {records.length > 0 && (

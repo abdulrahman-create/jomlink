@@ -26,9 +26,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   PublishOpportunity,
-  FundOpportunity,
   ReleaseReward,
   RefundOpportunity,
+  CancelOpportunity,
 } from "./actions";
 
 export const metadata = { title: "Opportunity · Jomlink" };
@@ -165,36 +165,43 @@ export default async function OpportunityDetailPage({
               <div className="text-sm">
                 <p className="font-semibold">Ready to publish?</p>
                 <p className="text-muted-foreground">
-                  Publishing computes the 10% activation fee + reward escrow and records
-                  simulated transactions.
-
+                  Publishing deducts a {money(funding.postingDeposit)} posting
+                  deposit (10% of the reward) from your wallet. If you cancel before
+                  a Linker is selected, {money(funding.depositRefund)} is refunded and
+                  the {money(funding.listingFee)} listing fee is retained. The reward
+                  itself is only settled when you accept a Linker.
                 </p>
               </div>
               <PublishOpportunity opportunityId={opp.id} />
             </CardContent>
           </Card>
         )}
-        {isOwner && opp.status === "PENDING_PAYMENT" && (
-          <Card className="mb-6 border-primary/30">
-            <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
-              <div className="text-sm">
-                <p className="font-semibold">Awaiting funding.</p>
-                <p className="text-muted-foreground">
-                  Funding records the reward escrow + 10% activation fee via the
-                  transaction ledger (simulated). Once funded, the opportunity goes live.
-                </p>
-              </div>
-              <FundOpportunity opportunityId={opp.id} />
-            </CardContent>
-          </Card>
-        )}
+        {isOwner &&
+          opp.status === "ACTIVE" &&
+          !opp.linker_id &&
+          Number(opp.funded_amount || 0) <= 0 && (
+            <Card className="mb-6 border-primary/30">
+              <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+                <div className="text-sm">
+                  <p className="font-semibold">Cancel this opportunity?</p>
+                  <p className="text-muted-foreground">
+                    No Linker has been selected yet. Cancelling refunds{" "}
+                    {money(funding.depositRefund)} of your {money(funding.postingDeposit)}{" "}
+                    posting deposit; the {money(funding.listingFee)} listing fee is
+                    non-refundable.
+                  </p>
+                </div>
+                <CancelOpportunity opportunityId={opp.id} />
+              </CardContent>
+            </Card>
+          )}
         {isOwner && opp.status === "COMPLETED" && selected && (
           <Card className="mb-6 border-primary/30">
             <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
               <div className="text-sm">
                 <p className="font-semibold">Completed.</p>
                 <p className="text-muted-foreground">
-                  Release the escrowed reward to the selected Linker. A 3% service fee is
+                  Release the escrowed reward to the selected Linker. A 10% service fee is
                   deducted and kept by the platform.
                 </p>
               </div>
@@ -304,18 +311,31 @@ export default async function OpportunityDetailPage({
                 </p>
                 <ul className="space-y-1 text-muted-foreground">
                   <li className="flex justify-between">
-                    <span>Reward (escrow)</span>
-                    <span className="tabular-nums text-foreground">{money(funding.reward)}</span>
+                    <span>Posting deposit (10%, refundable less listing fee)</span>
+                    <span className="tabular-nums text-foreground">{money(funding.postingDeposit)}</span>
+                  </li>
+                  <li className="flex justify-between pl-4 text-xs">
+                    <span className="italic">— incl. {money(funding.listingFee)} non-refundable listing fee</span>
+                    <span className="tabular-nums">{money(funding.listingFee)}</span>
                   </li>
                   <li className="flex justify-between">
-                    <span>Activation fee (10%)</span>
-                    <span className="tabular-nums text-foreground">{money(funding.activationFee)}</span>
+                    <span>Reward (settled on Linker acceptance)</span>
+                    <span className="tabular-nums text-foreground">{money(funding.reward)}</span>
                   </li>
                   <li className="flex justify-between border-t border-border pt-1 font-medium">
-                    <span>Total funded</span>
-                    <span className="tabular-nums text-foreground">{money(funding.escrowAmount)}</span>
+                    <span>Total cost to Seeker</span>
+                    <span className="tabular-nums text-foreground">
+                      {money(funding.reward + funding.postingDeposit)}
+                    </span>
                   </li>
                 </ul>
+                <p className="mt-2 text-xs">
+                  The deposit is charged at posting — the {money(funding.listingFee)} listing
+                  fee is charged <strong className="text-foreground">inside</strong> the
+                  deposit. It is refunded (less the listing fee) if you cancel before a Linker
+                  is selected, and consumed on completion. The reward is held in escrow only
+                  once you accept a Linker.
+                </p>
               </div>
             </CardContent>
           </Card>

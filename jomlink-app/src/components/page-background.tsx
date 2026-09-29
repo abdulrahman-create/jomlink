@@ -17,7 +17,10 @@ function prefersReducedMotion(): boolean {
  * scrolls over it — so the hero image remains visible throughout the whole
  * page instead of being stuck to the hero section.
  *
- * A gentle zoom is applied as you scroll for a subtle parallax feel.
+ * A pronounced cinematic zoom-in is applied as you scroll down: the image
+ * scales from 1.0 → 1.28 and drifts slightly upward, so the page feels like
+ * it is moving "into" the image. The zoom is eased (ease-out) so it starts
+ * fast near the top and slows as you reach the bottom.
  * Honors `prefers-reduced-motion` (no zoom, static image).
  */
 export function PageBackground({ imageSrc }: { imageSrc: string }) {
@@ -50,7 +53,11 @@ export function PageBackground({ imageSrc }: { imageSrc: string }) {
     };
   }, [reduced]);
 
-  const zoom = 1 + progress * 0.1;
+  // Cinematic zoom-in: scale 1.0 → 1.28 with a subtle upward drift.
+  // Eased (ease-out) so the motion feels natural rather than linear.
+  const eased = 1 - Math.pow(1 - progress, 3);
+  const zoom = 1 + eased * 0.28;
+  const translateY = eased * -3; // % of element height, subtle parallax lift
 
   return (
     <div aria-hidden="true" className="fixed inset-0 z-0 overflow-hidden">
@@ -58,8 +65,10 @@ export function PageBackground({ imageSrc }: { imageSrc: string }) {
         className="absolute inset-0 bg-cover bg-center"
         style={{
           backgroundImage: `url(${imageSrc})`,
-          transform: reduced ? "none" : `scale(${zoom})`,
-          transition: reduced ? "none" : "transform 0.2s linear",
+          transform: reduced
+            ? "none"
+            : `scale(${zoom}) translateY(${translateY}%)`,
+          transition: reduced ? "none" : "transform 0.15s linear",
           willChange: "transform",
         }}
       />

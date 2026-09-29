@@ -14,6 +14,7 @@ import {
   submitProposalAction,
   type ProposalState,
 } from "@/app/actions/proposals";
+import { FEES, formatMYR } from "@/lib/constants";
 import type { RelationshipRow, LinkerProposalRow } from "@/lib/jomlink-types";
 
 const initialState: ProposalState = {};
@@ -143,12 +144,16 @@ export function ProposalForm({
                 id="proposedReward"
                 name="proposedReward"
                 type="number"
-                min={1}
+                min={FEES.MIN_OPPORTUNITY_REWARD}
                 step="0.01"
                 placeholder="e.g. 4500"
                 defaultValue={existing?.proposed_reward ?? ""}
                 required
               />
+              <p className="text-xs text-muted-foreground">
+                Minimum {formatMYR(FEES.MIN_OPPORTUNITY_REWARD)} — the 10% posting deposit
+                must cover the {formatMYR(FEES.LISTING_FEE)} listing fee.
+              </p>
               {state?.fieldErrors?.proposedReward && (
                 <p className="text-xs text-destructive">{state.fieldErrors.proposedReward[0]}</p>
               )}

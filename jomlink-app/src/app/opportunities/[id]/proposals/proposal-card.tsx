@@ -15,7 +15,7 @@ import {
   selectLinkerAction,
   type NegotiationState,
 } from "@/app/actions/negotiations";
-import { formatDate } from "@/lib/constants";
+import { formatDate, FEES, formatMYR } from "@/lib/constants";
 import type { LinkerProposalRow, ProposalNegotiationRow } from "@/lib/jomlink-types";
 
 const initialState: NegotiationState = {};
@@ -213,11 +213,14 @@ export function ProposalCard({
                 id={`reward-${proposal.id}`}
                 name="offeredReward"
                 type="number"
-                min={1}
+                min={FEES.MIN_OPPORTUNITY_REWARD}
                 step="0.01"
                 defaultValue={proposal.proposed_reward}
                 required
               />
+              <p className="text-xs text-muted-foreground">
+                Minimum {formatMYR(FEES.MIN_OPPORTUNITY_REWARD)}
+              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor={`msg-${proposal.id}`}>Message (optional)</Label>
@@ -247,7 +250,7 @@ export function ProposalCard({
                 id={`agree-reward-${proposal.id}`}
                 name="agreedReward"
                 type="number"
-                min={1}
+                min={FEES.MIN_OPPORTUNITY_REWARD}
                 step="0.01"
                 defaultValue={proposal.proposed_reward}
                 required

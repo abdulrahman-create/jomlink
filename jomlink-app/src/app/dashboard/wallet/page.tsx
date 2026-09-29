@@ -20,7 +20,9 @@ import type {
 export const metadata = { title: "Wallet · Jomlink" };
 
 const TX_TYPE_LABEL: Record<string, string> = {
-  OPPORTUNITY_FUNDING: "Opportunity funding",
+  OPPORTUNITY_FUNDING: "Reward escrow",
+  POSTING_DEPOSIT: "Posting deposit",
+  LISTING_FEE: "Listing fee",
   ACTIVATION_FEE: "Activation fee",
   REWARD_RELEASE: "Reward release",
   LINKER_SERVICE_FEE: "Linker service fee",
@@ -65,6 +67,8 @@ export default async function WalletPage() {
   }, 0);
   const outAmount = settled.reduce((sum: number, t: TransactionRow) => {
     return t.type === "OPPORTUNITY_FUNDING" ||
+      t.type === "POSTING_DEPOSIT" ||
+      t.type === "LISTING_FEE" ||
       t.type === "ACTIVATION_FEE" ||
       t.type === "LINKER_SERVICE_FEE" ||
       t.type === "WALLET_DEBIT"

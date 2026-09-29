@@ -18,6 +18,9 @@ export interface JomlinkUserRow {
   status: string;
   supabase_user_id: string | null;
   app: string;
+  biometric_consent: boolean;
+  biometric_consent_at: string | null;
+  biometric_consent_version: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -98,6 +101,7 @@ export interface OpportunityRow {
   confidentiality: string;
   additional_requirements: string | null;
   status: string;
+  linker_id: string | null;
   activation_fee: number | null;
   funded_amount: number | null;
   is_restricted_category: boolean;
@@ -285,6 +289,40 @@ export interface KycRecordRow {
   reviewed_at: string | null;
   expiry_date: string | null;
   notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Biometric capture label for ML training (see kyc_biometrics table). */
+export type BiometricLabelStatus =
+  | "UNLABELLED"
+  | "MATCH"
+  | "NO_MATCH"
+  | "UNUSABLE";
+
+/**
+ * A consented face + ID capture. Stored paths point into the PRIVATE
+ * `kyc-biometrics` bucket — never public URLs. Used purely to build a labelled
+ * dataset for a future in-house face-verification model.
+ */
+export interface KycBiometricRow {
+  id: string;
+  user_id: string;
+  kyc_record_id: string | null;
+  selfie_path: string;
+  id_document_path: string;
+  face_width: number | null;
+  face_height: number | null;
+  face_confidence: number | null;
+  capture_device: string | null;
+  capture_source: string | null;
+  liveness_passed: boolean;
+  consent_version: string;
+  consented_at: string;
+  label_status: BiometricLabelStatus;
+  labelled_by: string | null;
+  labelled_at: string | null;
+  purge_requested_at: string | null;
   created_at: string;
   updated_at: string;
 }

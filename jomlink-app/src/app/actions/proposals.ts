@@ -9,15 +9,23 @@ import {
   createProposal,
   updateProposalIfOwned,
 } from "@/lib/queries";
+import { FEES, formatMYR } from "@/lib/constants";
 
 // ── Validation ──────────────────────────────────────────────
+// The agreed reward must stay at or above the platform floor so the 10%
+// posting deposit always covers the RM10 listing fee (blueprint §3.9).
+const MIN_REWARD = FEES.MIN_OPPORTUNITY_REWARD;
+
 const ProposalSchema = z.object({
   relationshipId: z.string().optional().or(z.literal("")),
   relationshipDeclared: z.string().min(10, "Describe the basis of your relationship").max(1000),
   proposedTarget: z.string().max(160).optional().or(z.literal("")),
   proposedMethod: z.string().max(500).optional().or(z.literal("")),
   proposedDeliverable: z.string().min(10, "Describe what you will deliver").max(2000),
-  proposedReward: z.coerce.number().min(1, "Proposed reward must be more than 0").max(1_000_000_000),
+  proposedReward: z.coerce
+    .number()
+    .min(MIN_REWARD, `Proposed reward must be at least ${formatMYR(MIN_REWARD)}`)
+    .max(1_000_000_000),
   proposedDeadline: z.coerce.date().optional(),
   remarks: z.string().max(1000).optional().or(z.literal("")),
   isTargetSubstitution: z.boolean().optional(),
