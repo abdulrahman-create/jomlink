@@ -171,6 +171,9 @@ export async function selectLinkerAction(
   if (opp.seeker_id !== user.id) {
     return { error: "Only the Seeker can select a Linker." };
   }
+  if (opp.linker_id) {
+    return { error: "A Linker has already been selected for this opportunity." };
+  }
   if (opp.status !== "ACTIVE" && opp.status !== "PROPOSAL_RECEIVED" && opp.status !== "NEGOTIATION") {
     return { error: "This opportunity is not in a selectable state." };
   }
@@ -198,7 +201,16 @@ export async function selectLinkerAction(
   }
 
   try {
-    // 1) Full reward → escrow (OPPORTUNITY_FUNDING).
+    // 1) Commit the opportunity FIRST. If anything below fails, the listing is
+    //    already LINKER_SELECTED and therefore refuses new proposals — the
+    //    failure mode is "escrow not yet funded", never "still accepting
+    //    applications after a Linker was chosen".
+    await updateOpportunityIfOwned(opp.id, user.id, {
+      status: "LINKER_SELECTED",
+      linker_id: proposal.linker_id,
+    });
+
+    // 2) Full reward → escrow (OPPORTUNITY_FUNDING).
     const fundTx = await createTransaction({
       user_id: user.id,
       opportunity_id: opp.id,
@@ -217,19 +229,20 @@ export async function selectLinkerAction(
       await createLedgerEntry({ transaction_id: fundTx.id, ...e });
     }
 
-    // 2) Lock terms + select the proposal.
+    // 3) Lock terms + select the proposal.
     await updateProposal(proposal.id, {
       status: "SELECTED",
       agreed_reward: agreedReward,
       agreed_deliverable: agreedDeliverable || null,
       agreed_at: new Date().toISOString(),
     });
+
+    // 4) Record the funded amount now that escrow holds it.
     await updateOpportunityIfOwned(opp.id, user.id, {
-      status: "LINKER_SELECTED",
-      linker_id: proposal.linker_id,
       funded_amount: agreedReward,
     });
-    // Open a connection for the workflow (appointment → evidence → completion).
+
+    // 5) Open a connection for the workflow (appointment → evidence → completion).
     await createConnection({
       opportunity_id: opp.id,
       proposal_id: proposal.id,

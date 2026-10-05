@@ -566,7 +566,16 @@ export async function getProposalsByLinker(
   return data ?? [];
 }
 
-export async function getProposalsByLinkerWithOpportunity(linkerId: string) {
+export async function getProposalsByLinkerWithOpportunity(
+  linkerId: string
+): Promise<(LinkerProposalRow & {
+  opportunities?: {
+    title?: string | null;
+    status?: string | null;
+    offer_amount?: number | null;
+    currency?: string | null;
+  } | null;
+})[]> {
   const { data, error } = await sc()
     .from("linker_proposals")
     .select("*, opportunities(title, status, offer_amount, currency)")
@@ -866,7 +875,29 @@ export async function getConnectionByOpportunity(
   return (data as ConnectionRow | null) ?? null;
 }
 
-export async function getConnectionsByUser(userId: string) {
+export async function getConnectionByProposal(
+  proposalId: string
+): Promise<ConnectionRow | null> {
+  const { data, error } = await sc()
+    .from("connections")
+    .select("*")
+    .eq("proposal_id", proposalId)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as ConnectionRow | null) ?? null;
+}
+
+export async function getConnectionsByUser(
+  userId: string
+): Promise<(ConnectionRow & {
+  opportunities?: {
+    title?: string | null;
+    status?: string | null;
+    offer_amount?: number | null;
+    currency?: string | null;
+    seeker_id?: string | null;
+  } | null;
+})[]> {
   // Connections where the user is the Linker.
   const { data, error } = await sc()
     .from("connections")

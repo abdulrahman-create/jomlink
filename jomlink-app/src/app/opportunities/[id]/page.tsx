@@ -15,10 +15,13 @@ import {
   getProfileByUserId,
   getRelationships,
   getProposalsByOpportunity,
+  getProposalByLinkerAndOpportunity,
+  getConnectionByOpportunity,
 } from "@/lib/queries";
 import { computeFunding } from "@/lib/funding";
 import { computeMatchScore, matchLabel } from "@/lib/matching";
 import { OPPORTUNITY_CATEGORIES, formatDate } from "@/lib/constants";
+import type { LinkerProposalRow } from "@/lib/jomlink-types";
 import { SiteHeaderWithUser } from "@/components/site-header-with-user";
 import { SiteFooter } from "@/components/site-footer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -72,6 +75,32 @@ const EDITABLE_STATUSES = new Set([
   "NEGOTIATION",
 ]);
 
+/**
+ * Statuses that mean a Linker is already committed to this opportunity. Once any
+ * of these is reached the listing can no longer take new proposals, so the
+ * "Apply as a Linker" call-to-action must not render — not even for the Linker
+ * who was just selected.
+ */
+const LINKER_COMMITTED_STATUSES = new Set([
+  "LINKER_SELECTED",
+  "AWAITING_CONFIRMATION",
+  "IN_PROGRESS",
+  "APPOINTMENT_SCHEDULED",
+  "AWAITING_VERIFICATION",
+  "COMPLETED",
+  "DISPUTED",
+]);
+
+const PROPOSAL_STATUS_LABEL: Record<string, string> = {
+  SUBMITTED: "Submitted",
+  UNDER_REVIEW: "Under review",
+  ACCEPTED: "Accepted",
+  REJECTED: "Rejected",
+  WITHDRAWN: "Withdrawn",
+  SELECTED: "Selected",
+  COMPLETED: "Completed",
+};
+
 export default async function OpportunityDetailPage({
   params,
 }: {
@@ -95,6 +124,28 @@ export default async function OpportunityDetailPage({
   // a proposal yet — a proposal freezes the terms it was based on.
   const canEdit =
     isOwner && EDITABLE_STATUSES.has(opp.status) && proposals.length === 0;
+
+  // Has a Linker been committed to this opportunity? Either the opportunity
+  // carries a linker_id, or it has progressed past the point of no return.
+  const linkerCommitted =
+    !!opp.linker_id || LINKER_COMMITTED_STATUSES.has(opp.status);
+
+  // For a logged-in non-owner, look up their own proposal (if any) and the
+  // connection once one exists. Both drive which call-to-action renders below:
+  // a Linker who already applied must never see "Apply as a Linker" again.
+  let myProposal: LinkerProposalRow | null = null;
+  let myConnection: { id: string } | null = null;
+  if (user && !isOwner) {
+    myProposal = await getProposalByLinkerAndOpportunity(user.id, opp.id);
+    if (myProposal?.status === "SELECTED" || linkerCommitted) {
+      const conn = await getConnectionByOpportunity(opp.id);
+      myConnection = conn && conn.linker_id === user.id ? { id: conn.id } : null;
+    }
+  }
+
+  const iAmSelectedLinker = myProposal?.status === "SELECTED";
+  const canApply =
+    !isOwner && !myProposal && !linkerCommitted && opp.status === "ACTIVE";
 
   // For a logged-in Linker, compute a match score against their profile.
   let matchScore: number | null = null;
@@ -385,8 +436,8 @@ export default async function OpportunityDetailPage({
                     {money(funding.reward)}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Settled to you on acceptance of your proposal, less the platform's
-                    Linker service fee.
+                    Settled to you on acceptance of your proposal, less the
+                    platform&apos;s Linker service fee.
                   </p>
                 </div>
               )}
@@ -396,20 +447,78 @@ export default async function OpportunityDetailPage({
 
         {!isOwner && (
           <div className="mt-8 rounded-xl border border-border bg-card p-6 text-center">
-            <p className="font-semibold">Think you can make this introduction?</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Submit a proposal as a Linker to offer your relationship and negotiate terms.
-            </p>
-            <div className="mt-4 flex flex-wrap justify-center gap-2">
-              {opp.status === "ACTIVE" && (
-                <Button asChild>
-                  <Link href={"/opportunities/" + opp.id + "/apply"}>Apply as a Linker</Link>
-                </Button>
-              )}
-              <Button asChild variant="outline">
-                <Link href="/dashboard/profile">Complete my profile</Link>
-              </Button>
-            </div>
+            {iAmSelectedLinker ? (
+              <>
+                <p className="font-semibold text-primary">
+                  You were selected for this opportunity.
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Your proposal has been accepted and the reward is held in escrow.
+                  Continue in your connection workspace to schedule the introduction.
+                </p>
+                <div className="mt-4 flex flex-wrap justify-center gap-2">
+                  {myConnection && (
+                    <Button asChild>
+                      <Link href={"/dashboard/connections/" + myConnection.id}>
+                        Go to connection
+                      </Link>
+                    </Button>
+                  )}
+                  <Button asChild variant="outline">
+                    <Link href="/dashboard/proposals">Back to my proposals</Link>
+                  </Button>
+                </div>
+              </>
+            ) : myProposal ? (
+              <>
+                <p className="font-semibold">
+                  You have already submitted a proposal.
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Status:{" "}
+                  <span className="font-medium text-foreground">
+                    {PROPOSAL_STATUS_LABEL[myProposal.status] ?? myProposal.status}
+                  </span>{" "}
+                  · Proposed reward {money(myProposal.proposed_reward)}
+                </p>
+                <div className="mt-4 flex flex-wrap justify-center gap-2">
+                  <Button asChild>
+                    <Link href="/dashboard/proposals">View my proposals</Link>
+                  </Button>
+                </div>
+              </>
+            ) : linkerCommitted ? (
+              <>
+                <p className="font-semibold">A Linker has been selected.</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  This opportunity is no longer open for new proposals.
+                </p>
+                <div className="mt-4 flex flex-wrap justify-center gap-2">
+                  <Button asChild variant="outline">
+                    <Link href="/marketplace">Browse other opportunities</Link>
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="font-semibold">Think you can make this introduction?</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Submit a proposal as a Linker to offer your relationship and negotiate terms.
+                </p>
+                <div className="mt-4 flex flex-wrap justify-center gap-2">
+                  {canApply && (
+                    <Button asChild>
+                      <Link href={"/opportunities/" + opp.id + "/apply"}>
+                        Apply as a Linker
+                      </Link>
+                    </Button>
+                  )}
+                  <Button asChild variant="outline">
+                    <Link href="/dashboard/profile">Complete my profile</Link>
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         )}
       </main>

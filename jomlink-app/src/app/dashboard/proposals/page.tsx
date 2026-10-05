@@ -2,12 +2,14 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { FileText } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
-import { getProposalsByLinkerWithOpportunity } from "@/lib/queries";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  getProposalsByLinkerWithOpportunity,
+  getConnectionsByUser,
+} from "@/lib/queries";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/constants";
-import type { LinkerProposalRow } from "@/lib/jomlink-types";
 
 export const metadata = { title: "My Proposals · Jomlink" };
 
@@ -35,6 +37,15 @@ export default async function MyProposalsPage() {
 
   const proposals = await getProposalsByLinkerWithOpportunity(user.id);
 
+  // Map each proposal to its connection (created when the Seeker selects the
+  // Linker) so a SELECTED proposal can link straight into the workspace.
+  const connections = proposals.some((p) => p.status === "SELECTED")
+    ? await getConnectionsByUser(user.id)
+    : [];
+  const connectionByProposal = new Map(
+    connections.map((c) => [c.proposal_id, c.id] as const)
+  );
+
   return (
     <div className="space-y-6">
       <div>
@@ -58,10 +69,8 @@ export default async function MyProposalsPage() {
         </Card>
       ) : (
         <div className="space-y-4">
-          {proposals.map((p: LinkerProposalRow & { opportunities?: unknown }) => {
-            const opp = p.opportunities as
-              | { title?: string; status?: string; offer_amount?: number; currency?: string }
-              | null;
+          {proposals.map((p) => {
+            const opp = p.opportunities;
             return (
               <Card key={p.id}>
                 <CardContent className="flex flex-wrap items-center justify-between gap-3 p-5">
@@ -81,6 +90,18 @@ export default async function MyProposalsPage() {
                     </p>
                   </div>
                   <div className="flex shrink-0 gap-2">
+                    {p.status === "SELECTED" && connectionByProposal.get(p.id) && (
+                      <Button asChild size="sm">
+                        <Link
+                          href={
+                            "/dashboard/connections/" +
+                            connectionByProposal.get(p.id)
+                          }
+                        >
+                          Go to connection
+                        </Link>
+                      </Button>
+                    )}
                     <Button asChild variant="outline" size="sm">
                       <Link href={"/opportunities/" + p.opportunity_id}>
                         View opportunity

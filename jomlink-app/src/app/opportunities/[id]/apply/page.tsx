@@ -27,10 +27,32 @@ export default async function ApplyPage({
   if (!user) redirect("/login?next=/opportunities/" + id + "/apply");
   if (opp.seeker_id === user.id) redirect("/opportunities/" + id);
 
+  // Guard the URL directly, not just the CTA: an opportunity that already has a
+  // committed Linker takes no further proposals, and a Linker who already
+  // applied must not be able to submit a second one.
+  const COMMITTED = [
+    "LINKER_SELECTED",
+    "AWAITING_CONFIRMATION",
+    "IN_PROGRESS",
+    "APPOINTMENT_SCHEDULED",
+    "AWAITING_VERIFICATION",
+    "COMPLETED",
+    "DISPUTED",
+  ];
+  if (opp.linker_id || COMMITTED.includes(opp.status) || opp.status !== "ACTIVE") {
+    redirect("/opportunities/" + id);
+  }
+
   const [relationships, existing] = await Promise.all([
     getRelationships(user.id),
     getProposalByLinkerAndOpportunity(user.id, opp.id),
   ]);
+
+  // Withdrawing a proposal is allowed to start over, so only an active proposal
+  // blocks re-entry.
+  if (existing && existing.status !== "WITHDRAWN" && existing.status !== "REJECTED") {
+    redirect("/opportunities/" + id);
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
