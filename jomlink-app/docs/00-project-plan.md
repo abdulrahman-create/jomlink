@@ -65,8 +65,16 @@ Browser
 | **6** | Connection + completion + trust | ✅ Done |
 | **7** | Admin / RBAC + disputes | 🟡 In progress |
 | **8** | Dashboard + wallet + polish | 🔲 Not started |
+| **9** | Deadline setting + progress report thread + yellow flag | 🔲 Not started |
 
 > Each phase has its own detail page in this `docs/` folder.
+
+> **Phase 9** covers the Seeker/Linker deadline & progress-report workflow defined in
+> blueprint §5.6.1, §5.6.2 and §9.11.1 — the Linker requests a task deadline, the
+> Seeker accepts it, the Linker reports progress against it, both parties comment with
+> edits preserved as evidence, and a missed Linker-proposed deadline raises a yellow
+> flag. It builds on Phase 6 (connection workflow) and extends Phase 7 (dispute
+> evidence of record).
 
 ---
 
@@ -169,10 +177,12 @@ Already built:
 ## 7. Next Action
 
 **MVP is feature-complete.** Remaining work is production hardening:
-1. KYC hardening: liveness/selfie, expiry tracking, automated verification providers. (Member-facing doc upload + admin review + admin document preview are built.)
-2. Live payment gateway (ToyyibPay sandbox → production keys, webhook tunnel for callback).
-3. Fraud/risk scoring engine + advanced matching (Phase 2 marketplace intelligence).
-4. Business accounts, multi-country, multi-currency(architecture-ready, not built).
+
+1. **Phase 9 — Deadline & progress-report workflow** (blueprint §5.6.1, §5.6.2): Linker deadline request → Seeker accept/reject, yellow flag on missed commitments, progress report thread with two-way commenting and immutable edit history, and the dispute evidence-of-record view. See `phase-06-connection.md` (tasks 6.8–6.11), `phase-04-proposals.md` (negotiation window) and `phase-07-admin.md` (§7.9/§7.10).
+2. KYC hardening: liveness/selfie, expiry tracking, automated verification providers. (Member-facing doc upload + admin review + admin document preview are built.)
+3. Live payment gateway (ToyyibPay sandbox → production keys, webhook tunnel for callback).
+4. Fraud/risk scoring engine + advanced matching (Phase 2 marketplace intelligence).
+5. Business accounts, multi-country, multi-currency(architecture-ready, not built).
 
 ---
 
@@ -184,3 +194,4 @@ Already built:
 - **2026-09-24** — Member-facing KYC submission flow added: `/dashboard/kyc` (upload identity doc → private `kyc-documents` bucket → PENDING `kyc_records` row → admin `/admin/kyc` review queue). Files: `src/app/actions/kyc.ts` (`submitKycAction`), `src/app/dashboard/kyc/` (page + `kyc-form.tsx`), `getKycRecordsByUser` query helper, `kyc-documents` storage bucket in schema SQL, "Verification" nav item. Build passes (27 routes).
 - **2026-09-24** — Admin KYC document preview added: `/api/admin/kyc/[id]/document` (admin-guarded `kyc:read`, generates 60s signed URL for the private object and redirects). "View document" link in the admin KYC queue. Build passes (28 routes.
 - **2026-10-01** — Seeker opportunity editing added (bug fix): owners could not edit a posted Opportunity. New `/opportunities/[id]/edit` page + `opportunity-edit-form.tsx`, `updateOpportunityAction` server action, `hasProposalsForOpportunity` query helper, and an "Edit opportunity" button on the detail page. **Edit-lock rule:** a listing is editable only while its status allows it **and** no Linker has submitted a proposal. As soon as **any Linker submits a proposal** (or a Linker is selected / reward is escrowed) the listing becomes read-only; the rule is enforced in the server action, the edit page, and the button. See `phase-03-marketplace.md` → *Opportunity editing (Seeker)*.
+- **2026-10-05** — **New Seeker/Linker deadline & progress-report workflow documented** (blueprint §5.6.1, §5.6.2, §9.11.1; planning only, not yet built). Changes: (1) **Deadline setting** — after the Seeker accepts the Linker, the **Linker requests the task deadline** as a distinct timestamped step; the Seeker accepts (task → `IN_PROGRESS`) or rejects/requests a change (terms reopen for negotiation, §5.6). (2) **Yellow flag** — a Linker who set a deadline but cannot deliver by it receives a yellow flag: a commitment signal (not a penalty) that does not by itself release the reward, is cleared on on-time delivery or an accepted extension, feeds the Linker Performance Record/Reputation, and counts as an abuse signal when repeated. (3) **Progress report thread** — opens at deadline acceptance and runs until the deadline ends; the Linker posts reports, both parties comment, and extension requests are raised through the thread. (4) **Evidence of record** — nothing in the thread is ever destroyed: either party may edit their own comment, but **every edit preserves the prior version as retrievable update history**, so a dispute can be resolved on what was actually claimed and when. Docs updated: `phase-06-connection.md` (tasks 6.8–6.11, statuses, files, rules), `phase-04-proposals.md` (negotiation window + deadline hand-off), `phase-07-admin.md` (dispute evidence of record, tasks 7.9/7.10), `00-project-plan.md` (new **Phase 9**).

@@ -257,17 +257,17 @@
   "jomlink-app/next-env.d.ts": {
     "mtime": 1791174739.518163,
     "ast_hash": "8195d2c60ce847a459ae9d308d6a5724",
-    "semantic_hash": ""
+    "semantic_hash": "8195d2c60ce847a459ae9d308d6a5724"
   },
   "jomlink-app/next.config.ts": {
     "mtime": 1790836517.0908737,
     "ast_hash": "1bcba48d8ef42431ab3e76d2161df6fd",
-    "semantic_hash": ""
+    "semantic_hash": "1bcba48d8ef42431ab3e76d2161df6fd"
   },
   "jomlink-app/package.json": {
     "mtime": 1790846416.3291104,
     "ast_hash": "a9b65d39c1c3959c3fab173b6555e266",
-    "semantic_hash": ""
+    "semantic_hash": "a9b65d39c1c3959c3fab173b6555e266"
   },
   "jomlink-app/postcss.config.mjs": {
     "mtime": 1789699732.127862,
@@ -307,7 +307,7 @@
   "jomlink-app/src/app/actions/admin.ts": {
     "mtime": 1790844403.4508493,
     "ast_hash": "583f03d8ea95d2a7bc10de493ef26c16",
-    "semantic_hash": ""
+    "semantic_hash": "583f03d8ea95d2a7bc10de493ef26c16"
   },
   "jomlink-app/src/app/actions/appointments.ts": {
     "mtime": 1789720240.3429377,
@@ -337,12 +337,12 @@
   "jomlink-app/src/app/actions/negotiations.ts": {
     "mtime": 1791174521.2610247,
     "ast_hash": "95c7710ff396445979ff65b7f35445ac",
-    "semantic_hash": ""
+    "semantic_hash": "95c7710ff396445979ff65b7f35445ac"
   },
   "jomlink-app/src/app/actions/opportunities.ts": {
     "mtime": 1790841085.19304,
     "ast_hash": "04f277a8cfe84f5e832b3fabdc5f9324",
-    "semantic_hash": ""
+    "semantic_hash": "04f277a8cfe84f5e832b3fabdc5f9324"
   },
   "jomlink-app/src/app/actions/profile.ts": {
     "mtime": 1790235173.073913,
@@ -397,7 +397,7 @@
   "jomlink-app/src/app/admin/opportunities/page.tsx": {
     "mtime": 1790844403.4508493,
     "ast_hash": "4fc6f7d0385e53af7b7bedd6ff7a93e2",
-    "semantic_hash": ""
+    "semantic_hash": "4fc6f7d0385e53af7b7bedd6ff7a93e2"
   },
   "jomlink-app/src/app/admin/page.tsx": {
     "mtime": 1790049219.2016902,
@@ -442,12 +442,12 @@
   "jomlink-app/src/app/dashboard/layout.tsx": {
     "mtime": 1791170632.4606602,
     "ast_hash": "906ef19f00a710f5c30d1a36c2e12e7a",
-    "semantic_hash": ""
+    "semantic_hash": "906ef19f00a710f5c30d1a36c2e12e7a"
   },
   "jomlink-app/src/app/dashboard/page.tsx": {
     "mtime": 1791170605.3808734,
     "ast_hash": "2e183ae2995cdde52ac0ed46e70c0a7f",
-    "semantic_hash": ""
+    "semantic_hash": "2e183ae2995cdde52ac0ed46e70c0a7f"
   },
   "jomlink-app/src/app/dashboard/profile/employment-form.tsx": {
     "mtime": 1789716115.9237387,
@@ -467,7 +467,7 @@
   "jomlink-app/src/app/dashboard/proposals/page.tsx": {
     "mtime": 1791174707.7675292,
     "ast_hash": "13b52fdc1e5685f623a39cd222db9538",
-    "semantic_hash": ""
+    "semantic_hash": "13b52fdc1e5685f623a39cd222db9538"
   },
   "jomlink-app/src/app/dashboard/relationships/page.tsx": {
     "mtime": 1789714660.6491096,
@@ -482,7 +482,7 @@
   "jomlink-app/src/app/dashboard/wallet/page.tsx": {
     "mtime": 1790842839.9263268,
     "ast_hash": "6885600f073d1beadb2c1809f7ef1417",
-    "semantic_hash": ""
+    "semantic_hash": "6885600f073d1beadb2c1809f7ef1417"
   },
   "jomlink-app/src/app/layout.tsx": {
     "mtime": 1790131271.4809499,
@@ -507,7 +507,7 @@
   "jomlink-app/src/app/opportunities/[id]/apply/page.tsx": {
     "mtime": 1791174659.7885504,
     "ast_hash": "09d4233d054848f385980a6318e3c8f9",
-    "semantic_hash": ""
+    "semantic_hash": "09d4233d054848f385980a6318e3c8f9"
   },
   "jomlink-app/src/app/opportunities/[id]/apply/proposal-form.tsx": {
     "mtime": 1790645655.8176298,
@@ -517,7 +517,7 @@
   "jomlink-app/src/app/opportunities/[id]/page.tsx": {
     "mtime": 1791174686.7187786,
     "ast_hash": "be60dfede2a190647a2b437e74eeccdf",
-    "semantic_hash": ""
+    "semantic_hash": "be60dfede2a190647a2b437e74eeccdf"
   },
   "jomlink-app/src/app/opportunities/[id]/proposals/page.tsx": {
     "mtime": 1789720495.7542567,
@@ -527,12 +527,12 @@
   "jomlink-app/src/app/opportunities/[id]/proposals/proposal-card.tsx": {
     "mtime": 1791175162.1756892,
     "ast_hash": "7b1dca50a4bec81fd607ee8c6013202a",
-    "semantic_hash": ""
+    "semantic_hash": "7b1dca50a4bec81fd607ee8c6013202a"
   },
   "jomlink-app/src/app/opportunities/new/opportunity-form.tsx": {
     "mtime": 1790838764.0653455,
     "ast_hash": "34243ef1ce3209be939f268c2e835776",
-    "semantic_hash": ""
+    "semantic_hash": "34243ef1ce3209be939f268c2e835776"
   },
   "jomlink-app/src/app/opportunities/new/page.tsx": {
     "mtime": 1789720495.751256,
@@ -552,7 +552,7 @@
   "jomlink-app/src/components/page-background.tsx": {
     "mtime": 1791169188.5343416,
     "ast_hash": "82350b5e325f377e3c7ad2709fb08bb9",
-    "semantic_hash": ""
+    "semantic_hash": "82350b5e325f377e3c7ad2709fb08bb9"
   },
   "jomlink-app/src/components/site-footer.tsx": {
     "mtime": 1790147873.6461644,
@@ -597,7 +597,7 @@
   "jomlink-app/src/components/ui/select.tsx": {
     "mtime": 1790846914.8995965,
     "ast_hash": "b24a9dc7e16c93c80b943cd6a17419d9",
-    "semantic_hash": ""
+    "semantic_hash": "b24a9dc7e16c93c80b943cd6a17419d9"
   },
   "jomlink-app/src/components/ui/textarea.tsx": {
     "mtime": 1789701406.932897,
@@ -812,7 +812,7 @@
   "jomlink-app/src/lib/queries.ts": {
     "mtime": 1791174591.3930156,
     "ast_hash": "6b83378bd2aabc5f54cf53925e890de0",
-    "semantic_hash": ""
+    "semantic_hash": "6b83378bd2aabc5f54cf53925e890de0"
   },
   "jomlink-app/src/lib/rbac.ts": {
     "mtime": 1790049219.2037022,
@@ -847,7 +847,7 @@
   "jomlink-app/supabase/jomlink-schema.sql": {
     "mtime": 1790841360.3861136,
     "ast_hash": "0396f0eeb3c5aab3374ea97bebb78503",
-    "semantic_hash": ""
+    "semantic_hash": "0396f0eeb3c5aab3374ea97bebb78503"
   },
   "jomlink-app/tsconfig.json": {
     "mtime": 1789699740.2957757,
@@ -1160,14 +1160,14 @@
     "semantic_hash": "d95507b6d7dc3aaa335bdbc7188181b1"
   },
   "jomlink-app/docs/00-project-plan.md": {
-    "mtime": 1790834046.4405284,
-    "ast_hash": "d5b9cf7f4d94d00e73adb9129cf93eaf",
-    "semantic_hash": ""
+    "mtime": 1791185750.3066247,
+    "ast_hash": "d3b6a9f7b49751289d4ace68d1bc9de9",
+    "semantic_hash": "d3b6a9f7b49751289d4ace68d1bc9de9"
   },
   "jomlink-app/docs/README.md": {
-    "mtime": 1789702074.761482,
-    "ast_hash": "9f56df3e6406ff40419b0bf3886c894b",
-    "semantic_hash": "9f56df3e6406ff40419b0bf3886c894b"
+    "mtime": 1791185758.375039,
+    "ast_hash": "0b082e46b5952dba9e78195d16c97cd4",
+    "semantic_hash": "0b082e46b5952dba9e78195d16c97cd4"
   },
   "jomlink-app/docs/phase-01-auth.md": {
     "mtime": 1789704057.343755,
@@ -1182,12 +1182,12 @@
   "jomlink-app/docs/phase-03-marketplace.md": {
     "mtime": 1790834046.4405284,
     "ast_hash": "c159948a3929fe886fa6efa6f55ff71d",
-    "semantic_hash": ""
+    "semantic_hash": "c159948a3929fe886fa6efa6f55ff71d"
   },
   "jomlink-app/docs/phase-04-proposals.md": {
-    "mtime": 1790643468.2397666,
-    "ast_hash": "9b8bb3ca2cda03dbe71d3ec0b970799f",
-    "semantic_hash": "9b8bb3ca2cda03dbe71d3ec0b970799f"
+    "mtime": 1791185690.6213903,
+    "ast_hash": "5dc3e4ac0ddcbfd7cfe4eb2d7d372d68",
+    "semantic_hash": "5dc3e4ac0ddcbfd7cfe4eb2d7d372d68"
   },
   "jomlink-app/docs/phase-05-transactions.md": {
     "mtime": 1790644040.2527337,
@@ -1195,14 +1195,14 @@
     "semantic_hash": "e946548963e5b00b63a64114ae0d1a9f"
   },
   "jomlink-app/docs/phase-06-connection.md": {
-    "mtime": 1789720240.3263397,
-    "ast_hash": "aa38cf7a26e43dc8e48ee9c810ba2f42",
-    "semantic_hash": "aa38cf7a26e43dc8e48ee9c810ba2f42"
+    "mtime": 1791185677.8699682,
+    "ast_hash": "d89cdcd23f40138f2e09d191fe283b4a",
+    "semantic_hash": "d89cdcd23f40138f2e09d191fe283b4a"
   },
   "jomlink-app/docs/phase-07-admin.md": {
-    "mtime": 1790236659.1329663,
-    "ast_hash": "b5c177b96a94b409cd70c12bd3a40aeb",
-    "semantic_hash": "b5c177b96a94b409cd70c12bd3a40aeb"
+    "mtime": 1791185710.632404,
+    "ast_hash": "e5814f05e96fcc09a1a195f3a09d4bdd",
+    "semantic_hash": "e5814f05e96fcc09a1a195f3a09d4bdd"
   },
   "jomlink-app/docs/phase-08-dashboard.md": {
     "mtime": 1790147873.6487868,
@@ -1317,7 +1317,7 @@
   "jomlink-app/src/app/dashboard/wallet/loading.tsx": {
     "mtime": 1790842839.9263268,
     "ast_hash": "49f456cb569fbd7a8dc7aa3826b6e35c",
-    "semantic_hash": ""
+    "semantic_hash": "49f456cb569fbd7a8dc7aa3826b6e35c"
   },
   "jomlink-app/src/app/dashboard/wallet/top-up-form.tsx": {
     "mtime": 1790151672.1599374,
@@ -1417,36 +1417,41 @@
   "jomlink-app/src/app/dashboard/proposals-received/page.tsx": {
     "mtime": 1791170525.7934914,
     "ast_hash": "03892cf8ad8387113cca01eec6062fe2",
-    "semantic_hash": ""
+    "semantic_hash": "03892cf8ad8387113cca01eec6062fe2"
   },
   "jomlink-app/src/app/opportunities/[id]/edit/opportunity-edit-form.tsx": {
     "mtime": 1790833377.7024963,
     "ast_hash": "dd00a64530155d6165141fc31ac40d37",
-    "semantic_hash": ""
+    "semantic_hash": "dd00a64530155d6165141fc31ac40d37"
   },
   "jomlink-app/src/app/opportunities/[id]/edit/page.tsx": {
     "mtime": 1790834046.4277468,
     "ast_hash": "06fc6e460a1a696c3451f94b00348b5d",
-    "semantic_hash": ""
+    "semantic_hash": "06fc6e460a1a696c3451f94b00348b5d"
   },
   "jomlink-app/src/lib/posting.ts": {
     "mtime": 1790844403.4508493,
     "ast_hash": "f0a7f40243b2d39da9815a3b7c8ac6a4",
-    "semantic_hash": ""
+    "semantic_hash": "f0a7f40243b2d39da9815a3b7c8ac6a4"
   },
   "jomlink-app/src/lib/status.ts": {
     "mtime": 1791170471.334092,
     "ast_hash": "323cc426907a5aec338421bdc6157e6d",
-    "semantic_hash": ""
+    "semantic_hash": "323cc426907a5aec338421bdc6157e6d"
   },
   "jomlink-app/supabase/cleanup-keep-user-data.sql": {
     "mtime": 1790839818.6785579,
     "ast_hash": "370f5d20405b0c3862185b23d843da3a",
-    "semantic_hash": ""
+    "semantic_hash": "370f5d20405b0c3862185b23d843da3a"
   },
   "jomlink-app/supabase/fix-transaction-type-enum.sql": {
     "mtime": 1790841360.3861136,
     "ast_hash": "6f3af642e1e4f9db2e345e12cd410fcb",
-    "semantic_hash": ""
+    "semantic_hash": "6f3af642e1e4f9db2e345e12cd410fcb"
+  },
+  "jomlink-app/docs/phase-09-deadline-progress.md": {
+    "mtime": 1791185765.9916704,
+    "ast_hash": "07f73ace66fc5288a567bfc49c2a9a64",
+    "semantic_hash": "07f73ace66fc5288a567bfc49c2a9a64"
   }
 }

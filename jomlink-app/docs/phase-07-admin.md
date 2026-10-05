@@ -41,6 +41,8 @@
 - [x] Admin can moderate opportunities
 - [x] Dispute can be raised, money held, and resolved
 - [x] Audit trail is written for key actions
+- [ ] Admin can review the **evidence of record** when resolving a dispute: the deadline record, progress report thread, and every edited comment's revision history
+- [ ] Admin can see **yellow flags** against a Linker when assessing a missed-deadline dispute
 
 ---
 
@@ -49,6 +51,7 @@
 - `src/lib/rbac.ts` — permission checks
 - `src/app/actions/admin.ts`
 - `src/app/actions/disputes.ts`
+- `src/app/admin/disputes/[id]/page.tsx` — dispute detail + evidence of record
 
 ---
 
@@ -62,6 +65,29 @@
 - [x] 7.6 Dispute workflow
 - [x] 7.7 Audit log
 - [x] 7.8 Clean build + test
+- [ ] 7.9 Dispute evidence of record (deadline record + progress thread + comment revisions)
+- [ ] 7.10 Yellow flag visibility in dispute review
+
+---
+
+## Dispute Evidence of Record (blueprint §9.11, §9.11.1)
+
+When resolving a dispute the administrator must be able to reconstruct **what was claimed, by whom, and when** — not just read the current text of a message.
+
+The dispute review screen must surface, alongside the existing `disputes` row:
+
+1. **The deadline record** — the deadline the Linker requested, the timestamp, and whether the Seeker accepted or rejected it.
+2. **The progress report thread** — every report the Linker posted from acceptance until the deadline ended, in order.
+3. **All comments on those reports, with revision history** — for any edited comment, the admin can expand the **prior versions**, each with author and edit timestamp. A comment's current text alone is **not** sufficient evidence.
+4. **The yellow-flag record** — each flag raised against the Linker, the deadline it relates to, and whether it was cleared.
+
+Retention rules enforced by the admin layer:
+
+- Nothing in the evidence of record is ever hard-deleted, **including superseded comment versions**.
+- Every entry is immutable once written, timestamped, and attributed to an author.
+- The evidence of record may be relied upon **in place of free-text messages** when establishing the state of the work at a given date.
+
+> A party cannot rely on a comment's current wording alone; the **full edit history is part of the record**.
 
 ---
 

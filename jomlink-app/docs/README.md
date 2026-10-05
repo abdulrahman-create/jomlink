@@ -13,6 +13,7 @@ Phased build plan for the Jomlink business-introductions marketplace.
 | `phase-06-connection.md` | Connection workflow + trust |
 | `phase-07-admin.md` | Admin / RBAC + disputes |
 | `phase-08-dashboard.md` | Dashboard + wallet + polish |
+| `phase-09-deadline-progress.md` | Deadline setting + progress report thread + yellow flag |
 
 ## How to use
 
