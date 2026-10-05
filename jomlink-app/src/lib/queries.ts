@@ -674,7 +674,7 @@ export async function getProposalWithLinker(id: string) {
 export async function getProposalsWithLinker(opportunityId: string) {
   const { data, error } = await sc()
     .from("linker_proposals")
-    .select("*, users(full_name, country, role)")
+    .select("*, users(full_name, country, role), connections(id)")
     .eq("opportunity_id", opportunityId)
     .order("created_at", { ascending: false });
   if (error) throw error;

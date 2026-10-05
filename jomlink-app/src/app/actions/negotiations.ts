@@ -10,6 +10,7 @@ import {
   updateProposal,
   updateOpportunityIfOwned,
   createConnection,
+  getConnectionByProposal,
   createTransaction,
   createLedgerEntry,
   getWalletBalance,
@@ -198,6 +199,35 @@ export async function selectLinkerAction(
         balance
       )}. Top up your wallet and try again.`,
     };
+  }
+
+  // Idempotency / recovery: if this proposal was already selected, escrow is
+  // already funded — don't charge twice. This also lets a proposal that was
+  // left SELECTED without a connection (e.g. the flow was interrupted) be
+  // completed by pressing Select again.
+  const existingConnection = await getConnectionByProposal(proposal.id);
+  if (proposal.status === "SELECTED" || existingConnection) {
+    if (existingConnection) {
+      revalidatePath("/opportunities/" + opp.id + "/proposals");
+      revalidatePath("/dashboard/connections");
+      return { success: true };
+    }
+    // Selected but no connection — finish the handoff without re-charging escrow.
+    try {
+      await createConnection({
+        opportunity_id: opp.id,
+        proposal_id: proposal.id,
+        linker_id: proposal.linker_id,
+        status: "PENDING_ACKNOWLEDGEMENT",
+        agreed_reward: agreedReward,
+      });
+      revalidatePath("/opportunities/" + opp.id + "/proposals");
+      revalidatePath("/dashboard/connections");
+      return { success: true };
+    } catch (e: unknown) {
+      console.error("selectLinkerAction: connection recovery failed", e);
+      return { error: "Could not open the connection. Please try again." };
+    }
   }
 
   try {

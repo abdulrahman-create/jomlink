@@ -452,10 +452,19 @@ export default async function OpportunityDetailPage({
                 <p className="font-semibold text-primary">
                   You were selected for this opportunity.
                 </p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Your proposal has been accepted and the reward is held in escrow.
-                  Continue in your connection workspace to schedule the introduction.
-                </p>
+                {myConnection ? (
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Your proposal has been accepted and the reward is held in escrow.
+                    Continue in your connection workspace to schedule the introduction.
+                  </p>
+                ) : (
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Your proposal was accepted, but the connection has not been
+                    opened yet — the Seeker still needs to complete acceptance
+                    (which funds the reward into escrow). It will appear here once
+                    they do.
+                  </p>
+                )}
                 <div className="mt-4 flex flex-wrap justify-center gap-2">
                   {myConnection && (
                     <Button asChild>

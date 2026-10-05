@@ -41,7 +41,10 @@ export function ProposalCard({
   proposal,
   opportunityId,
 }: {
-  proposal: LinkerProposalRow & { users?: { full_name?: string; country?: string } | null };
+  proposal: LinkerProposalRow & {
+    users?: { full_name?: string; country?: string } | null;
+    connections?: { id: string }[] | null;
+  };
   opportunityId: string;
 }) {
   const [counterState, counterAction, counterPending] = useActionState<
@@ -64,7 +67,12 @@ export function ProposalCard({
       .catch(() => setNegotiations([]));
   }, [proposal.id]);
 
-  const isOpen = !["SELECTED", "COMPLETED", "REJECTED", "WITHDRAWN"].includes(proposal.status);
+  const isOpen = !["COMPLETED", "REJECTED", "WITHDRAWN"].includes(proposal.status);
+
+  // A SELECTED proposal already escrowed the reward — unless the connection was
+  // never created, in which case the Seeker can press Select to finish it.
+  const needsConnection = proposal.status === "SELECTED" && !proposal.connections?.length;
+  const canSelect = isOpen || needsConnection;
 
   return (
     <Card className="overflow-hidden">
@@ -155,7 +163,7 @@ export function ProposalCard({
         </div>
 
         {/* Actions */}
-        {isOpen && (
+        {canSelect && (
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"
@@ -179,10 +187,27 @@ export function ProposalCard({
                 ) : (
                   <UserCheck className="h-4 w-4" aria-hidden="true" />
                 )}
-                Select this Linker
+                {needsConnection
+                  ? "Complete acceptance (open the connection)"
+                  : "Select this Linker"}
               </Button>
             </form>
           </div>
+        )}
+
+        {canSelect && !needsConnection && (
+          <p className="text-xs text-muted-foreground">
+            Selecting commits the full agreed reward from your wallet into escrow
+            and opens the connection. Make sure your wallet covers{" "}
+            {money(proposal.agreed_reward ?? proposal.proposed_reward)}.
+          </p>
+        )}
+
+        {needsConnection && (
+          <p className="text-xs font-medium text-amber-700">
+            This Linker is selected but their connection was never opened, so they
+            cannot start. Press the button above to finish the handoff.
+          </p>
         )}
 
         {selectState?.error && (

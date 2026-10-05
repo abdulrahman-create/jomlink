@@ -40,6 +40,61 @@
 
 ---
 
+## Root-cause note: "Connections tab is empty" (2026-10-05)
+
+**Symptom.** A Linker with a `SELECTED` proposal saw an empty Connections tab and
+had no way to reach the deadline/progress workflow.
+
+**Cause — upstream of Phase 9, in the Phase 4→6 handoff.** `createConnection()`
+was called from exactly one place: `selectLinkerAction` in
+`src/app/actions/negotiations.ts`. That action also escrows the full reward and
+requires the Seeker's wallet to cover it. Separately, `acceptTermsAction` (the
+"Accept terms" button) sets the proposal to `ACCEPTED` and **stops** — it creates
+no connection and escrows nothing.
+
+So a proposal could read as accepted/selected while **no `connections` row
+existed**. Because every part of Phase 9 (deadline, progress thread, flag) hangs
+off a connection, the whole workflow was unreachable — and the Connections tab
+was, correctly, empty. The opportunity page compounded it by telling the Linker
+"the reward is held in escrow… continue in your connection workspace" when no
+connecton existed.
+
+**Fix.**
+1. **`selectLinkerAction` is the single accept step that starts the workflow** —
+   it escrows the reward and opens the connection (unchanged behaviour), now made
+   **idempotent**: a proposal that is already `SELECTED` is not charged twice, and
+   if the connection is missing it is created **without re-charging escrow**, so a
+   stuck proposal recovers when the Seeker presses Select again.
+2. **The proposal card keeps the Select button visible** for a `SELECTED`
+   proposal with no connection, labelled *"Complete acceptance (open the
+   connection)"*, with an explicit amber note explaining the state.
+3. **The opportunity page only claims escrow when a connection exists** — it now
+   says the Seeker still needs to complete acceptance.
+4. `getProposalsWithLinker` selects `connections(id)` so the card can detect this.
+
+**Not changed:** "Accept terms" still only locks the agreed terms. It is the
+negotiation step, not the acceptance step; blueprint §5.7 makes accepting the
+Linker's submission the point at which the Seeker commits the full reward.
+
+**Verified end-to-end at runtime (2026-10-05).** Starting from the stuck state
+(`SELECTED` proposal, no connection):
+
+1. Connection recovery created the connection for farid **without re-charging
+   escrow** — `OPPORTUNITY_FUNDING` remained at exactly **one** row for the
+   agreed reward.
+2. The Linker's **Connections** tab populated with the connection and the prompt
+   *"Set the task deadline for this job."* with a **Set deadline** action.
+3. The connection page rendered the **Task Deadline** card with the deliverable
+   pre-filled from the opportunity's required outcome.
+4. Submitting *Request deadline* moved the connection to `IN_PROGRESS` and the
+   opportunity to `DEADLINE_REQUESTED`, and stored the deadline as
+   `opportunity_deadlines.status = 'REQUESTED'` ("Awaiting your acceptance").
+
+Remaining steps belong to the Seeker: accept the deadline (which opens the
+progress thread) or reject it (which reopens negotiation).
+
+---
+
 ## Definition of Done
 
 - [x] `npm run build` passes
