@@ -47,10 +47,10 @@
 - [x] Completion releases the escrow payout (via Phase 5)
 - [x] Members can rate/review each other post-completion
 - [x] Reputation metrics update correctly
-- [ ] Linker can request a task deadline; Seeker can accept/reject it
-- [ ] Missing a Linker-proposed deadline raises a yellow flag; delivery or an accepted extension clears it
-- [ ] Progress report thread works: Linker posts, both parties comment, thread closes at deadline
-- [ ] Editing a comment preserves the prior version as retrievable update history
+- [x] Linker can request a task deadline; Seeker can accept/reject it
+- [x] Missing a Linker-proposed deadline raises a yellow flag; delivery or an accepted extension clears it
+- [x] Progress report thread works: Linker posts, both parties comment, thread closes at deadline
+- [x] Editing a comment preserves the prior version as retrievable update history
 
 ---
 

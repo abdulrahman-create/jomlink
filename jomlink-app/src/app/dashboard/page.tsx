@@ -4,10 +4,12 @@ import {
   BadgeCheck,
   Briefcase,
   Cable,
+  CalendarClock,
   Coins,
   FileText,
   Handshake,
   Inbox,
+  MessageSquare,
   Star,
   TrendingUp,
   Wallet,
@@ -19,6 +21,7 @@ import {
   getProposalsForSeeker,
   getConnectionsByUser,
   getConnectionsForSeeker,
+  getDeadlineByConnection,
   getTransactionsByUser,
   getPayoutsByRecipient,
   getMemberReputation,
@@ -86,6 +89,23 @@ export default async function DashboardPage() {
   );
   const activeConnections = [...seekerConnections, ...linkerConnections].filter(
     (c: ConnectionRow) => !["COMPLETED", "FAILED"].includes(c.status)
+  );
+
+  // Which active connections need the member's attention on the deadline /
+  // progress workflow? Drives the inline prompts in the Active Connections card.
+  const deadlinePairs = await Promise.all(
+    activeConnections.map(async (c: ConnectionRow) => [
+      c.id,
+      await getDeadlineByConnection(c.id),
+    ] as const)
+  );
+  const dueDeadlineIds = new Set(
+    deadlinePairs
+      .filter(([, d]) => !d || d.status === "REQUESTED" || d.status === "REJECTED")
+      .map(([id]) => id)
+  );
+  const acceptedDeadlineIds = new Set(
+    deadlinePairs.filter(([, d]) => d?.status === "ACCEPTED").map(([id]) => id)
   );
 
   const earnings = payouts.reduce(
@@ -406,6 +426,21 @@ export default async function DashboardPage() {
                         <p className="text-xs text-muted-foreground">
                           Started {formatDate(c.created_at)}
                         </p>
+                        {dueDeadlineIds.has(c.id) && (
+                          <p className="mt-0.5 flex items-center gap-1 text-xs font-medium text-primary">
+                            <CalendarClock className="h-3 w-3" aria-hidden="true" />
+                            Action needed — set or review the task deadline
+                          </p>
+                        )}
+                        {acceptedDeadlineIds.has(c.id) &&
+                          !["COMPLETED", "FAILED", "DISPUTED"].includes(c.status) && (
+                            <p className="mt-0.5 flex items-center gap-1 text-xs font-medium text-primary">
+                              <MessageSquare className="h-3 w-3" aria-hidden="true" />
+                              {c.linker_id === user.id
+                                ? "Post a progress update"
+                                : "Review the latest progress report"}
+                            </p>
+                          )}
                       </div>
                       <Badge variant={statusVariant(c.status)}>
                         {CONNECTION_STATUS_LABEL[c.status] ?? c.status}

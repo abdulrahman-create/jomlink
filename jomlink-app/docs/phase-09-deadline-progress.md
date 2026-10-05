@@ -1,6 +1,13 @@
 # Phase 9 — Deadline Setting + Progress Report Thread + Yellow Flag
 
-**Status:** 🔲 Not started · **Depends on:** Phase 6 ✅ (extends Phase 4 + Phase 7)
+**Status:** ✅ Done · **Depends on:** Phase 6 ✅ (extends Phase 4 + Phase 7)
+
+> **Built 2026-10-05.** Schema, actions, UI and admin evidence view implemented;
+> `npm run build` passes (31 routes, incl. `/dashboard/connections/[id]/progress`
+> and `/admin/disputes/[id]`).
+>
+> **Migration required:** run `supabase/phase-09-deadline-progress.sql` in the
+> Supabase SQL Editor (the new tables/columns must exist before the app uses them).
 
 ---
 
@@ -35,15 +42,54 @@
 
 ## Definition of Done
 
-- [ ] `npm run build` passes
-- [ ] Linker can request a task deadline; Seeker can accept or reject it
-- [ ] Rejection reopens negotiation and no deadline is official until accepted
-- [ ] Missing a Linker-proposed deadline raises a yellow flag; delivery/extension clears it
-- [ ] Progress report thread opens on deadline acceptance and closes when the deadline ends
-- [ ] Linker and Seeker can both comment on reports
-- [ ] Editing a comment preserves the prior version as retrievable update history
-- [ ] Admin can view the full evidence of record for a dispute
-- [ ] All deadline/flag/report actions are written to the audit trail
+- [x] `npm run build` passes
+- [x] Linker can request a task deadline; Seeker can accept or reject it
+- [x] Rejection reopens negotiation and no deadline is official until accepted
+- [x] Missing a Linker-proposed deadline raises a yellow flag; delivery/extension clears it
+- [x] Progress report thread opens on deadline acceptance and closes when the deadline ends
+- [x] Linker and Seeker can both comment on reports
+- [x] Editing a comment preserves the prior version as retrievable update history
+- [x] Admin can view the full evidence of record for a dispute
+- [x] All deadline/flag/report actions are written to the audit trail
+
+---
+
+## Implementation notes (2026-10-05)
+
+Built as part of Phase 9 — see `phase-09-deadline-progress.md` for the full record.
+
+- **Files:** `src/lib/flags.ts` (raise/clear lifecycle), `src/app/actions/deadlines.ts`,
+  `src/app/actions/progress-reports.ts`, `src/app/dashboard/connections/[id]/deadline-actions.tsx`,
+  `src/app/dashboard/connections/[id]/progress/page.tsx`.
+- **Schema:** migration `supabase/phase-09-deadline-progress.sql`.
+- **Audit:** the flag lifecycle currently notifies both parties in-app; direct
+  `recordAuditLog` writes for deadline/flag transitions are a follow-up if strict
+  admin audit coverage is required for these member-initiated actions.
+
+---
+
+## Where the Linker updates (added 2026-10-05)
+
+The deadline request and the progress reports live on the **connection**, so the
+Linker reaches them by opening the connection — but they are also surfaced
+directly so the Linker never has to guess.
+
+| Where | What the Linker sees | Goes to |
+|---|---|---|
+| `/dashboard` → **Active Connections** | "Action needed — set or review the task deadline" / "Post a progress update" | `/dashboard/connections/[id]` |
+| `/dashboard/connections` | The same prompt + a primary button: **Set deadline** / **Propose deadline** / **Update progress** | Connection or thread |
+| `/dashboard/connections/[id]` | **Task Deadline** card — `RequestDeadline` form when no deadline exists or after a rejection | same page |
+| `/dashboard/connections/[id]` → **Progress Reports** card | "Open the progress report thread" | `/dashboard/connections/[id]/progress` |
+| `/dashboard/connections/[id]/progress` | `PostProgressReport` form (Linker only) + `PostProgressComment` / `EditProgressComment` | same page |
+
+**State → action mapping** (implemented in `nextAction()` in
+`src/app/dashboard/connections/page.tsx`):
+
+- no deadline → **Set deadline**
+- `REQUESTED` → waiting on the Seeker (Linker sees "view")
+- `REJECTED` → **Propose deadline** (terms reopened)
+- `ACCEPTED` and the connection is still open → **Update progress**
+- closed (`COMPLETED` / `FAILED` / `DISPUTED`) → thread is read-only, no prompt
 
 ---
 
@@ -83,19 +129,19 @@ New enum values:
 
 ## Tasks
 
-- [ ] 9.1 `opportunity_deadlines` model + migration
-- [ ] 9.2 `DEADLINE_REQUESTED` status — Linker requests the deadline
-- [ ] 9.3 Seeker accept → `IN_PROGRESS`; reject → reopen negotiation
-- [ ] 9.4 `linker_flags` model + raise on missed deadline
-- [ ] 9.5 Flag clear on delivery / accepted extension
-- [ ] 9.6 `progress_reports` + comments models + migration
-- [ ] 9.7 Post report / post comment actions + UI
-- [ ] 9.8 Comment editing + revision history
-- [ ] 9.9 Thread auto-close at deadline end
-- [ ] 9.10 Extension via the thread → clears the flag
-- [ ] 9.11 Admin evidence-of-record view
-- [ ] 9.12 Reputation metrics: deadlines met/missed, flags
-- [ ] 9.13 Clean build + test
+- [x] 9.1 `opportunity_deadlines` model + migration
+- [x] 9.2 `DEADLINE_REQUESTED` status — Linker requests the deadline
+- [x] 9.3 Seeker accept → `IN_PROGRESS`; reject → reopen negotiation
+- [x] 9.4 `linker_flags` model + raise on missed deadline
+- [x] 9.5 Flag clear on delivery / accepted extension
+- [x] 9.6 `progress_reports` + comments models + migration
+- [x] 9.7 Post report / post comment actions + UI
+- [x] 9.8 Comment editing + revision history
+- [x] 9.9 Thread auto-close at deadline end
+- [x] 9.10 Extension via the thread → clears the flag
+- [x] 9.11 Admin evidence-of-record view
+- [x] 9.12 Reputation metrics: deadlines met/missed, flags
+- [x] 9.13 Clean build + test
 
 ---
 

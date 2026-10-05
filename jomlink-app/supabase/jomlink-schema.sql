@@ -36,7 +36,23 @@ do $$ begin
   create type jomlink.opportunity_category as enum ('BUSINESS_INTRODUCTION','EXECUTIVE_MEETING','INVESTOR_CONNECTION','CUSTOMER_CLIENT_CONNECTION','SUPPLIER_CONNECTION','DISTRIBUTOR_AGENT_CONNECTION','STRATEGIC_PARTNER','GOVERNMENT_PUBLIC_SECTOR','PROFESSIONAL_EXPERT','SITE_VISIT_ACCESS','OTHER');
 exception when duplicate_object then null; end $$;
 do $$ begin
-  create type jomlink.opportunity_status as enum ('DRAFT','PENDING_PAYMENT','ACTIVE','PROPOSAL_RECEIVED','NEGOTIATION','LINKER_SELECTED','AWAITING_CONFIRMATION','IN_PROGRESS','APPOINTMENT_SCHEDULED','AWAITING_VERIFICATION','COMPLETED','DISPUTED','FAILED','EXPIRED','CANCELLED');
+  create type jomlink.opportunity_status as enum ('DRAFT','PENDING_PAYMENT','ACTIVE','PROPOSAL_RECEIVED','NEGOTIATION','LINKER_SELECTED','DEADLINE_REQUESTED','AWAITING_CONFIRMATION','IN_PROGRESS','APPOINTMENT_SCHEDULED','AWAITING_VERIFICATION','FLAGGED','COMPLETED','DISPUTED','FAILED','EXPIRED','CANCELLED');
+exception when duplicate_object then null; end $$;
+-- Phase 9 (blueprint §5.6.1) — deadline setting, progress thread, commitment flags
+do $$ begin
+  create type jomlink.deadline_status as enum ('REQUESTED','ACCEPTED','REJECTED','SUPERSEDED');
+exception when duplicate_object then null; end $$;
+do $$ begin
+  create type jomlink.flag_type as enum ('MISSED_COMMITMENT');
+exception when duplicate_object then null; end $$;
+do $$ begin
+  create type jomlink.flag_status as enum ('RAISED','CLEARED');
+exception when duplicate_object then null; end $$;
+do $$ begin
+  create type jomlink.progress_report_status as enum ('ON_TRACK','AT_RISK','BLOCKED','COMPLETE');
+exception when duplicate_object then null; end $$;
+do $$ begin
+  create type jomlink.progress_author_role as enum ('LINKER','SEEKER','ADMIN');
 exception when duplicate_object then null; end $$;
 do $$ begin
   create type jomlink.confidentiality_level as enum ('PUBLIC','MATCHED','RESTRICTED','PRIVATE_DIRECT');
@@ -392,9 +408,85 @@ create table if not exists jomlink.reputation_metrics (
   cancellation_count int not null default 0,
   dispute_count      int not null default 0,
   on_time_count      int not null default 0,
+  -- Commitment metrics (blueprint §5.6.1, §5.15)
+  deadlines_requested int not null default 0,
+  deadlines_met       int not null default 0,
+  deadlines_missed    int not null default 0,
+  flags_raised        int not null default 0,
+  flags_cleared       int not null default 0,
   created_at         timestamptz not null default now(),
   updated_at         timestamptz not null default now()
 );
+
+-- ── 2b. Phase 9 — deadline setting, progress thread, flags (§5.6.1, §5.6.2) ──
+create table if not exists jomlink.opportunity_deadlines (
+  id                text primary key default gen_random_uuid()::text,
+  connection_id     text not null unique references jomlink.connections(id) on delete cascade,
+  proposed_by_id    text not null references jomlink.users(id) on delete cascade,
+  proposed_date     timestamptz not null,
+  deliverable       text,
+  note              text,
+  status            jomlink.deadline_status not null default 'REQUESTED',
+  accepted_date     timestamptz,
+  responded_at      timestamptz,
+  rejection_reason  text,
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now()
+);
+
+create table if not exists jomlink.progress_reports (
+  id                text primary key default gen_random_uuid()::text,
+  connection_id     text not null references jomlink.connections(id) on delete cascade,
+  author_id         text not null references jomlink.users(id) on delete cascade,
+  body              text not null,
+  status            jomlink.progress_report_status not null default 'ON_TRACK',
+  milestone         integer,
+  revised_deadline  timestamptz,
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now()
+);
+
+create table if not exists jomlink.progress_report_comments (
+  id              text primary key default gen_random_uuid()::text,
+  report_id       text not null references jomlink.progress_reports(id) on delete cascade,
+  author_id       text not null references jomlink.users(id) on delete cascade,
+  author_role     jomlink.progress_author_role not null,
+  body            text not null,
+  edited          boolean not null default false,
+  revision_count  integer not null default 0,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now()
+);
+
+create table if not exists jomlink.progress_report_comment_revisions (
+  id               text primary key default gen_random_uuid()::text,
+  comment_id       text not null references jomlink.progress_report_comments(id) on delete cascade,
+  body             text not null,
+  revision_number  integer not null,
+  edited_by_id     text not null references jomlink.users(id) on delete cascade,
+  edited_at        timestamptz not null default now()
+);
+
+create table if not exists jomlink.linker_flags (
+  id              text primary key default gen_random_uuid()::text,
+  linker_id       text not null references jomlink.users(id) on delete cascade,
+  connection_id   text not null references jomlink.connections(id) on delete cascade,
+  deadline_id     text,
+  type            jomlink.flag_type not null default 'MISSED_COMMITMENT',
+  reason          text,
+  status          jomlink.flag_status not null default 'RAISED',
+  raised_at       timestamptz not null default now(),
+  cleared_at      timestamptz,
+  cleared_reason  text,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now(),
+  unique (linker_id, connection_id, deadline_id)
+);
+
+create index if not exists progress_reports_connection_idx
+  on jomlink.progress_reports(connection_id, created_at);
+create index if not exists linker_flags_linker_idx
+  on jomlink.linker_flags(linker_id, status);
 
 create table if not exists jomlink.notifications (
   id          text primary key default gen_random_uuid()::text,

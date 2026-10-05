@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Calendar, ClipboardCheck, Sparkles, Scale, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Calendar, ClipboardCheck, Sparkles, Scale, AlertTriangle, CalendarClock, Flag, MessageSquare } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
 import {
   getConnectionById,
@@ -9,11 +9,14 @@ import {
   getEvidenceByConnection,
   getReviewsForSubject,
   getDisputeByConnectionId,
+  getDeadlineByConnection,
+  getActiveFlagByConnection,
+  getProgressReportsByConnection,
 } from "@/lib/queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/constants";
-import type { AppointmentRow, ConnectionEvidenceRow, ReviewRow } from "@/lib/jomlink-types";
+import type { AppointmentRow, ConnectionEvidenceRow, ReviewRow, OpportunityDeadlineRow, LinkerFlagRow, ProgressReportRow } from "@/lib/jomlink-types";
 import {
   ProposeAppointment,
   AppointmentActions,
@@ -24,6 +27,7 @@ import {
   ReviewForm,
   RaiseDisputeForm,
 } from "./actions";
+import { RequestDeadline, DeadlineActions, YellowFlagBanner } from "./deadline-actions";
 
 export const metadata = { title: "Connection · Jomlink" };
 
@@ -34,6 +38,13 @@ const CONN_STATUS_LABEL: Record<string, string> = {
   COMPLETED: "Completed",
   FAILED: "Failed",
   DISPUTED: "Disputed",
+};
+
+const DEADLINE_STATUS_LABEL: Record<string, string> = {
+  REQUESTED: "Awaiting your acceptance",
+  ACCEPTED: "Accepted",
+  REJECTED: "Rejected — terms reopened",
+  SUPERSEDED: "Superseded",
 };
 
 export default async function ConnectionDetailPage({
@@ -54,11 +65,14 @@ export default async function ConnectionDetailPage({
   const isSeeker = opp.seeker_id === user.id;
   if (!isLinker && !isSeeker) redirect("/dashboard");
 
-  const [appointments, evidence, reviews, dispute] = await Promise.all([
+  const [appointments, evidence, reviews, dispute, deadline, flag, reports] = await Promise.all([
     getAppointmentsByConnection(conn.id),
     getEvidenceByConnection(conn.id),
     getReviewsForSubject(isSeeker ? user.id : opp.seeker_id),
     getDisputeByConnectionId(conn.id),
+    getDeadlineByConnection(conn.id),
+    getActiveFlagByConnection(conn.id),
+    getProgressReportsByConnection(conn.id),
   ]);
 
   const latestAppointment = (appointments as AppointmentRow[])[
@@ -110,6 +124,106 @@ export default async function ConnectionDetailPage({
             </div>
           )}
         </div>
+      )}
+
+      {/* Yellow flag — missed commitment (blueprint §5.6.1) */}
+      {flag && <YellowFlagBanner reason={(flag as LinkerFlagRow).reason} />}
+
+      {/* Deadline Setting (blueprint §5.6.1) */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <CalendarClock className="h-4 w-4 text-primary" aria-hidden="true" /> Task Deadline
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm">
+          {deadline ? (
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="font-semibold">
+                  {formatDate((deadline as OpportunityDeadlineRow).proposed_date)}
+                </p>
+                <Badge
+                  variant={
+                    (deadline as OpportunityDeadlineRow).status === "ACCEPTED"
+                      ? "success"
+                      : (deadline as OpportunityDeadlineRow).status === "REJECTED"
+                        ? "destructive"
+                        : "warning"
+                  }
+                >
+                  {DEADLINE_STATUS_LABEL[(deadline as OpportunityDeadlineRow).status] ??
+                    (deadline as OpportunityDeadlineRow).status}
+                </Badge>
+              </div>
+              {(deadline as OpportunityDeadlineRow).deliverable && (
+                <p className="text-muted-foreground">
+                  Deliverable: {(deadline as OpportunityDeadlineRow).deliverable}
+                </p>
+              )}
+              {(deadline as OpportunityDeadlineRow).note && (
+                <p className="text-muted-foreground">
+                  Note: {(deadline as OpportunityDeadlineRow).note}
+                </p>
+              )}
+              {(deadline as OpportunityDeadlineRow).rejection_reason && (
+                <p className="text-destructive">
+                  Reason: {(deadline as OpportunityDeadlineRow).rejection_reason}
+                </p>
+              )}
+
+              {/* Seeker decides on a pending request */}
+              {isSeeker && (deadline as OpportunityDeadlineRow).status === "REQUESTED" && (
+                <DeadlineActions connectionId={conn.id} />
+              )}
+              {/* Linker re-requests after a rejection (terms reopened) */}
+              {isLinker && (deadline as OpportunityDeadlineRow).status === "REJECTED" && (
+                <RequestDeadline
+                  connectionId={conn.id}
+                  defaultDeliverable={(deadline as OpportunityDeadlineRow).deliverable}
+                />
+              )}
+            </div>
+          ) : isLinker ? (
+            <RequestDeadline
+              connectionId={conn.id}
+              defaultDeliverable={opp.required_outcome}
+            />
+          ) : (
+            <p className="text-muted-foreground">
+              The Linker will propose the task deadline. It becomes official once
+              you accept it.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Progress Report Thread (blueprint §5.6.2) */}
+      {deadline && (deadline as OpportunityDeadlineRow).status === "ACCEPTED" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <MessageSquare className="h-4 w-4 text-primary" aria-hidden="true" /> Progress Reports
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <p className="text-xs text-muted-foreground">
+              {(reports as ProgressReportRow[]).length} report(s) on the record.
+              Both parties may comment; edits preserve the previous wording as
+              update history.
+            </p>
+            {["COMPLETED", "FAILED", "DISPUTED"].includes(conn.status) ? (
+              <p className="text-muted-foreground">The thread has ended.</p>
+            ) : (
+              <Link
+                href={`/dashboard/connections/${conn.id}/progress`}
+                className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline"
+              >
+                Open the progress report thread
+              </Link>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {/* Appointment */}

@@ -225,6 +225,97 @@ export interface AppointmentRow {
   updated_at: string;
 }
 
+// ── Phase 9: deadline setting, progress thread, commitment flags ──
+
+export type DeadlineStatus =
+  | "REQUESTED"
+  | "ACCEPTED"
+  | "REJECTED"
+  | "SUPERSEDED";
+
+export interface OpportunityDeadlineRow {
+  id: string;
+  connection_id: string;
+  proposed_by_id: string;
+  proposed_date: string;
+  deliverable: string | null;
+  note: string | null;
+  status: DeadlineStatus;
+  accepted_date: string | null;
+  responded_at: string | null;
+  rejection_reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ProgressReportStatus =
+  | "ON_TRACK"
+  | "AT_RISK"
+  | "BLOCKED"
+  | "COMPLETE";
+
+export type ProgressAuthorRole = "LINKER" | "SEEKER" | "ADMIN";
+
+export interface ProgressReportRow {
+  id: string;
+  connection_id: string;
+  author_id: string;
+  body: string;
+  status: ProgressReportStatus;
+  milestone: number | null;
+  revised_deadline: string | null;
+  created_at: string;
+  updated_at: string;
+  /** Present when the query joins the author. */
+  author_name?: string | null;
+  comments?: ProgressReportCommentRow[];
+}
+
+export interface ProgressReportCommentRow {
+  id: string;
+  report_id: string;
+  author_id: string;
+  author_role: ProgressAuthorRole;
+  body: string;
+  edited: boolean;
+  revision_count: number;
+  created_at: string;
+  updated_at: string;
+  /** Present when the query joins the author. */
+  author_name?: string | null;
+  /** Prior versions, oldest first (update history). */
+  revisions?: ProgressReportCommentRevisionRow[];
+}
+
+export interface ProgressReportCommentRevisionRow {
+  id: string;
+  comment_id: string;
+  body: string;
+  revision_number: number;
+  edited_by_id: string;
+  edited_at: string;
+  /** Present when the query joins the editor. */
+  editor_name?: string | null;
+}
+
+export type FlagType = "MISSED_COMMITMENT";
+export type FlagStatus = "RAISED" | "CLEARED";
+
+export interface LinkerFlagRow {
+  id: string;
+  linker_id: string;
+  connection_id: string;
+  deadline_id: string | null;
+  type: FlagType;
+  reason: string | null;
+  status: FlagStatus;
+  raised_at: string;
+  cleared_at: string | null;
+  cleared_reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ConnectionEvidenceRow {
   id: string;
   connection_id: string;
@@ -259,6 +350,12 @@ export interface ReputationRow {
   cancellation_count: number;
   dispute_count: number;
   on_time_count: number;
+  /** Commitment metrics (blueprint §5.6.1, §5.15). */
+  deadlines_requested: number;
+  deadlines_met: number;
+  deadlines_missed: number;
+  flags_raised: number;
+  flags_cleared: number;
   created_at: string;
   updated_at: string;
 }

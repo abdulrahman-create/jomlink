@@ -23,6 +23,11 @@ import type {
   DisputeRow,
   AuditLogRow,
   NotificationRow,
+  OpportunityDeadlineRow,
+  ProgressReportRow,
+  ProgressReportCommentRow,
+  ProgressReportCommentRevisionRow,
+  LinkerFlagRow,
 } from "@/lib/jomlink-types";
 
 /**
@@ -1023,6 +1028,322 @@ export async function createEvidence(values: Record<string, unknown>) {
     .single();
   if (error) throw error;
   return data as ConnectionEvidenceRow;
+}
+
+// ── Deadlines / progress reports / flags (Phase 9) ─────────────
+
+export async function getDeadlineByConnection(
+  connectionId: string
+): Promise<OpportunityDeadlineRow | null> {
+  const { data, error } = await sc()
+    .from("opportunity_deadlines")
+    .select("*")
+    .eq("connection_id", connectionId)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as OpportunityDeadlineRow | null) ?? null;
+}
+
+export async function getDeadlineById(
+  id: string
+): Promise<OpportunityDeadlineRow | null> {
+  const { data, error } = await sc()
+    .from("opportunity_deadlines")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as OpportunityDeadlineRow | null) ?? null;
+}
+
+export async function createDeadline(values: Record<string, unknown>) {
+  const { data, error } = await sc()
+    .from("opportunity_deadlines")
+    .insert(values)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data as OpportunityDeadlineRow;
+}
+
+export async function updateDeadline(
+  id: string,
+  values: Record<string, unknown>
+): Promise<OpportunityDeadlineRow | null> {
+  const { data, error } = await sc()
+    .from("opportunity_deadlines")
+    .update(values)
+    .eq("id", id)
+    .select("*")
+    .maybeSingle();
+  if (error) throw error;
+  return (data as OpportunityDeadlineRow | null) ?? null;
+}
+
+/**
+ * Linkers whose accepted deadline has passed and who have no active flag yet.
+ * Used to raise the yellow flag for a missed commitment (§5.6.1).
+ */
+export async function listOverdueAcceptedDeadlines(): Promise<
+  OpportunityDeadlineRow[]
+> {
+  const { data, error } = await sc()
+    .from("opportunity_deadlines")
+    .select("*")
+    .eq("status", "ACCEPTED")
+    .lt("accepted_date", new Date().toISOString())
+    .order("accepted_date", { ascending: true });
+  if (error) throw error;
+  return (data as OpportunityDeadlineRow[]) ?? [];
+}
+
+export async function getProgressReportsByConnection(
+  connectionId: string
+): Promise<ProgressReportRow[]> {
+  const { data, error } = await sc()
+    .from("progress_reports")
+    .select("*")
+    .eq("connection_id", connectionId)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return (data as ProgressReportRow[]) ?? [];
+}
+
+export async function getProgressReportById(
+  id: string
+): Promise<ProgressReportRow | null> {
+  const { data, error } = await sc()
+    .from("progress_reports")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as ProgressReportRow | null) ?? null;
+}
+
+export async function createProgressReport(values: Record<string, unknown>) {
+  const { data, error } = await sc()
+    .from("progress_reports")
+    .insert(values)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data as ProgressReportRow;
+}
+
+export async function getRecentReportTimestamps(
+  connectionId: string
+): Promise<string[]> {
+  const { data, error } = await sc()
+    .from("progress_reports")
+    .select("created_at")
+    .eq("connection_id", connectionId)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  return ((data ?? []) as { created_at: string }[]).map((r) => r.created_at);
+}
+
+export async function getCommentsByReport(
+  reportId: string
+): Promise<ProgressReportCommentRow[]> {
+  const { data, error } = await sc()
+    .from("progress_report_comments")
+    .select("*")
+    .eq("report_id", reportId)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return (data as ProgressReportCommentRow[]) ?? [];
+}
+
+export async function getCommentById(
+  id: string
+): Promise<ProgressReportCommentRow | null> {
+  const { data, error } = await sc()
+    .from("progress_report_comments")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as ProgressReportCommentRow | null) ?? null;
+}
+
+export async function createProgressComment(values: Record<string, unknown>) {
+  const { data, error } = await sc()
+    .from("progress_report_comments")
+    .insert(values)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data as ProgressReportCommentRow;
+}
+
+export async function updateProgressComment(
+  id: string,
+  values: Record<string, unknown>
+): Promise<ProgressReportCommentRow | null> {
+  const { data, error } = await sc()
+    .from("progress_report_comments")
+    .update(values)
+    .eq("id", id)
+    .select("*")
+    .maybeSingle();
+  if (error) throw error;
+  return (data as ProgressReportCommentRow | null) ?? null;
+}
+
+/**
+ * Append a prior version of an edited comment to the immutable update history.
+ * The previous body is never destroyed — this is what makes edits evidence (§9.11.1).
+ */
+export async function createCommentRevision(values: Record<string, unknown>) {
+  const { data, error } = await sc()
+    .from("progress_report_comment_revisions")
+    .insert(values)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data as ProgressReportCommentRevisionRow;
+}
+
+export async function getRevisionsByComment(
+  commentId: string
+): Promise<ProgressReportCommentRevisionRow[]> {
+  const { data, error } = await sc()
+    .from("progress_report_comment_revisions")
+    .select("*")
+    .eq("comment_id", commentId)
+    .order("revision_number", { ascending: true });
+  if (error) throw error;
+  return (data as ProgressReportCommentRevisionRow[]) ?? [];
+}
+
+export async function getActiveFlagByConnection(
+  connectionId: string
+): Promise<LinkerFlagRow | null> {
+  const { data, error } = await sc()
+    .from("linker_flags")
+    .select("*")
+    .eq("connection_id", connectionId)
+    .eq("status", "RAISED")
+    .maybeSingle();
+  if (error) throw error;
+  return (data as LinkerFlagRow | null) ?? null;
+}
+
+export async function getFlagById(
+  id: string
+): Promise<LinkerFlagRow | null> {
+  const { data, error } = await sc()
+    .from("linker_flags")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as LinkerFlagRow | null) ?? null;
+}
+
+export async function listFlagsByLinker(
+  linkerId: string
+): Promise<LinkerFlagRow[]> {
+  const { data, error } = await sc()
+    .from("linker_flags")
+    .select("*")
+    .eq("linker_id", linkerId)
+    .order("raised_at", { ascending: false });
+  if (error) throw error;
+  return (data as LinkerFlagRow[]) ?? [];
+}
+
+export async function listFlagsByConnection(
+  connectionId: string
+): Promise<LinkerFlagRow[]> {
+  const { data, error } = await sc()
+    .from("linker_flags")
+    .select("*")
+    .eq("connection_id", connectionId)
+    .order("raised_at", { ascending: false });
+  if (error) throw error;
+  return (data as LinkerFlagRow[]) ?? [];
+}
+
+export async function createLinkerFlag(values: Record<string, unknown>) {
+  const { data, error } = await sc()
+    .from("linker_flags")
+    .insert(values)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data as LinkerFlagRow;
+}
+
+export async function updateLinkerFlag(
+  id: string,
+  values: Record<string, unknown>
+): Promise<LinkerFlagRow | null> {
+  const { data, error } = await sc()
+    .from("linker_flags")
+    .update(values)
+    .eq("id", id)
+    .select("*")
+    .maybeSingle();
+  if (error) throw error;
+  return (data as LinkerFlagRow | null) ?? null;
+}
+
+export async function countFlagsByLinker(linkerId: string): Promise<{
+  raised: number;
+  cleared: number;
+}> {
+  const { data, error } = await sc()
+    .from("linker_flags")
+    .select("status")
+    .eq("linker_id", linkerId);
+  if (error) throw error;
+  const rows = (data ?? []) as { status: string }[];
+  return {
+    raised: rows.filter((r) => r.status === "RAISED").length,
+    cleared: rows.filter((r) => r.status === "CLEARED").length,
+  };
+}
+
+/**
+ * Assemble the full evidence of record for a connection (blueprint §9.11.1):
+ * the deadline record, the progress report thread, every comment with its
+ * immutable revision history, and the flag history.
+ *
+ * Used by the admin dispute review so a resolution rests on what was actually
+ * claimed, by whom, and when — not on the current text of a message alone.
+ */
+export async function getEvidenceOfRecord(connectionId: string): Promise<{
+  deadline: OpportunityDeadlineRow | null;
+  reports: (Omit<ProgressReportRow, "comments"> & {
+    comments: (Omit<ProgressReportCommentRow, "revisions"> & {
+      revisions: ProgressReportCommentRevisionRow[];
+    })[];
+  })[];
+  flags: LinkerFlagRow[];
+}> {
+  const [deadline, reports, flags] = await Promise.all([
+    getDeadlineByConnection(connectionId),
+    getProgressReportsByConnection(connectionId),
+    listFlagsByConnection(connectionId),
+  ]);
+
+  const hydrated = await Promise.all(
+    reports.map(async (r) => {
+      const comments = await getCommentsByReport(r.id);
+      const withRevisions = await Promise.all(
+        comments.map(async (c) => ({
+          ...c,
+          revisions: await getRevisionsByComment(c.id),
+        }))
+      );
+      return { ...r, comments: withRevisions };
+    })
+  );
+
+  return { deadline, reports: hydrated, flags };
 }
 
 // ── Reviews / reputation (Phase 6) ──────────────────────────

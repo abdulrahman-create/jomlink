@@ -139,6 +139,16 @@ export default async function AdminDisputesPage({
                           </p>
                         </div>
                       )}
+                      <div className="pt-2">
+                        <Link
+                          href={`/admin/disputes/${d.id}`}
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
+                        >
+                          <FileText className="h-3.5 w-3.5" aria-hidden="true" />
+                          View evidence of record
+                          <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                        </Link>
+                      </div>
                     </div>
                   </div>
 

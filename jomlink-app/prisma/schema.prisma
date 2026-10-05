@@ -88,15 +88,46 @@ enum OpportunityStatus {
   PROPOSAL_RECEIVED
   NEGOTIATION
   LINKER_SELECTED
+  DEADLINE_REQUESTED
   AWAITING_CONFIRMATION
   IN_PROGRESS
   APPOINTMENT_SCHEDULED
   AWAITING_VERIFICATION
+  FLAGGED
   COMPLETED
   DISPUTED
   FAILED
   EXPIRED
   CANCELLED
+}
+
+enum DeadlineStatus {
+  REQUESTED
+  ACCEPTED
+  REJECTED
+  SUPERSEDED
+}
+
+enum FlagType {
+  MISSED_COMMITMENT
+}
+
+enum FlagStatus {
+  RAISED
+  CLEARED
+}
+
+enum ProgressReportStatus {
+  ON_TRACK
+  AT_RISK
+  BLOCKED
+  COMPLETE
+}
+
+enum ProgressAuthorRole {
+  LINKER
+  SEEKER
+  ADMIN
 }
 
 enum ConfidentialityLevel {
@@ -234,6 +265,11 @@ model users {
   auditEntries          audit_logs[]
   kycRecords            kyc_records[]
   reputation            reputation_metrics?
+  deadlinesProposed     opportunity_deadlines[]
+  progressReports       progress_reports[]
+  progressComments      progress_report_comments[]
+  commentRevisions      progress_report_comment_revisions[]
+  linkerFlags           linker_flags[] @relation("FlaggedLinker")
 }
 
 model member_profiles {
@@ -469,6 +505,103 @@ model connections {
   evidence         connection_evidence[]
   transactions     transactions[]
   disputes         disputes[]
+  deadline         opportunity_deadlines?
+  reports          progress_reports[]
+  flags            linker_flags[]
+}
+
+// ==============================
+// DEADLINE, PROGRESS REPORT & COMMITMENT FLAG
+// (blueprint §5.6.1, §5.6.2, §9.11.1)
+// ==============================
+
+/// The deadline-request record: the Linker proposes the task deadline and the
+/// Seeker accepts or rejects it. A distinct, timestamped step from negotiation.
+model opportunity_deadlines {
+  id                 String          @id @default(cuid())
+  connectionId       String          @unique
+  connection         connections     @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  proposedById       String
+  proposedBy         users           @relation(fields: [proposedById], references: [id], onDelete: Cascade)
+  proposedDate       DateTime
+  deliverable        String?
+  note               String?
+  status             DeadlineStatus  @default(REQUESTED)
+  acceptedDate       DateTime?
+  respondedAt        DateTime?
+  rejectionReason    String?
+  created_at         DateTime        @default(now())
+  updated_at         DateTime        @updatedAt
+}
+
+/// A Linker progress update posted against an accepted deadline. Open from
+/// deadline acceptance until the deadline ends.
+model progress_reports {
+  id                 String                @id @default(cuid())
+  connectionId       String
+  connection         connections           @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  authorId           String
+  author             users                 @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  body               String
+  status             ProgressReportStatus  @default(ON_TRACK)
+  milestone          Int?
+  revisedDeadline    DateTime?
+  created_at         DateTime              @default(now())
+  updated_at         DateTime              @updatedAt
+
+  comments           progress_report_comments[]
+}
+
+/// A threaded comment on a progress report. Both the Linker and the Seeker may
+/// comment; the author may edit their own comment.
+model progress_report_comments {
+  id                 String                  @id @default(cuid())
+  reportId           String
+  report             progress_reports        @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  authorId           String
+  author             users                   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  authorRole         ProgressAuthorRole
+  body               String
+  edited             Boolean                 @default(false)
+  revisionCount      Int                     @default(0)
+  created_at         DateTime                @default(now())
+  updated_at         DateTime                @updatedAt
+
+  revisions          progress_report_comment_revisions[]
+}
+
+/// Immutable update history: every prior version of an edited comment, with the
+/// author and the edit timestamp. This is what makes edits evidence-bearing.
+model progress_report_comment_revisions {
+  id                 String                    @id @default(cuid())
+  commentId          String
+  comment            progress_report_comments  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  body               String
+  revisionNumber     Int
+  editedById         String
+  editedBy           users                     @relation(fields: [editedById], references: [id], onDelete: Cascade)
+  editedAt           DateTime                  @default(now())
+}
+
+/// A commitment flag raised against a Linker for a deadline they proposed and
+/// missed. Cleared on on-time delivery or an accepted extension.
+model linker_flags {
+  id                 String      @id @default(cuid())
+  linkerId           String
+  linker             users       @relation("FlaggedLinker", fields: [linkerId], references: [id], onDelete: Cascade)
+  connectionId       String
+  connection         connections @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  deadlineId         String?
+  type               FlagType    @default(MISSED_COMMITMENT)
+  reason             String?
+  status             FlagStatus  @default(RAISED)
+  raisedAt           DateTime    @default(now())
+  clearedAt          DateTime?
+  clearedReason      String?
+  created_at         DateTime    @default(now())
+  updated_at         DateTime    @updatedAt
+
+  @@unique([linkerId, connectionId, deadlineId])
 }
 
 model connection_evidence {
@@ -598,6 +731,13 @@ model reputation_metrics {
   cancellationCount    Int      @default(0)
   disputeCount         Int      @default(0)
   onTimeCount          Int      @default(0)
+  // Commitment metrics (blueprint §5.6.1, §5.15) — derived from the deadline
+  // record, not self-reported.
+  deadlinesRequested   Int      @default(0)
+  deadlinesMet         Int      @default(0)
+  deadlinesMissed      Int      @default(0)
+  flagsRaised          Int      @default(0)
+  flagsCleared         Int      @default(0)
   created_at           DateTime @default(now())
   updated_at           DateTime @updatedAt
 }

@@ -41,8 +41,8 @@
 - [x] Admin can moderate opportunities
 - [x] Dispute can be raised, money held, and resolved
 - [x] Audit trail is written for key actions
-- [ ] Admin can review the **evidence of record** when resolving a dispute: the deadline record, progress report thread, and every edited comment's revision history
-- [ ] Admin can see **yellow flags** against a Linker when assessing a missed-deadline dispute
+- [x] Admin can review the **evidence of record** when resolving a dispute: the deadline record, progress report thread, and every edited comment's revision history
+- [x] Admin can see **yellow flags** against a Linker when assessing a missed-deadline dispute
 
 ---
 

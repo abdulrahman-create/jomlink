@@ -39,6 +39,9 @@ export function recomputeReputation(input: ReputationInput): {
 
 /**
  * Build the values object suitable for `upsertReputation` after a change.
+ *
+ * The commitment metrics (§5.6.1, §5.15) are optional so existing callers that
+ * predate Phase 9 keep working; when supplied they are written through.
  */
 export function buildReputationValues(row: Pick<
   ReputationRow,
@@ -50,7 +53,14 @@ export function buildReputationValues(row: Pick<
   | "cancellation_count"
   | "dispute_count"
   | "on_time_count"
->): Record<string, unknown> {
+> & Partial<Pick<
+  ReputationRow,
+  | "deadlines_requested"
+  | "deadlines_met"
+  | "deadlines_missed"
+  | "flags_raised"
+  | "flags_cleared"
+>>): Record<string, unknown> {
   const { successRate, responseRate } = recomputeReputation({
     completedCount: row.completed_count,
     successfulCount: row.successful_count,
@@ -59,7 +69,7 @@ export function buildReputationValues(row: Pick<
     averageRating: row.average_rating,
   });
 
-  return {
+  const values: Record<string, unknown> = {
     completed_count: row.completed_count,
     successful_count: row.successful_count,
     success_rate: successRate,
@@ -69,6 +79,19 @@ export function buildReputationValues(row: Pick<
     dispute_count: row.dispute_count,
     on_time_count: row.on_time_count,
   };
+
+  // Commitment metrics — only write the ones the caller actually tracked.
+  for (const key of [
+    "deadlines_requested",
+    "deadlines_met",
+    "deadlines_missed",
+    "flags_raised",
+    "flags_cleared",
+  ] as const) {
+    if (row[key] !== undefined) values[key] = row[key];
+  }
+
+  return values;
 }
 
 /** Human-friendly label for a success-rate band. */
