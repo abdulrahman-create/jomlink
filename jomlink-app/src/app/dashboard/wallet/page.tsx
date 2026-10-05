@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
-import { Wallet, ArrowUpRight, ArrowDownLeft, Coins } from "lucide-react";
+import { Wallet, ArrowUpRight, ArrowDownLeft, Coins, Clock } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
 import {
   getTransactionsByUser,
@@ -38,6 +38,24 @@ function money(n: number | null | undefined) {
     currency: "MYR",
     minimumFractionDigits: 2,
   }).format(Number(n ?? 0));
+}
+
+// Money IN = funds arriving in the member's wallet.
+const MONEY_IN = new Set([
+  "REFUND",
+  "PAYOUT",
+  "REWARD_RELEASE",
+  "WALLET_CREDIT",
+]);
+
+// Classify a transaction for colour-coding and the +/− sign.
+// PENDING is shown separately (amber) regardless of direction because the money
+// has not actually settled yet.
+function txDirection(
+  t: TransactionRow
+): "in" | "out" | "pending" {
+  if (t.status === "PENDING") return "pending";
+  return MONEY_IN.has(t.type) ? "in" : "out";
 }
 
 export default async function WalletPage() {
@@ -109,13 +127,15 @@ export default async function WalletPage() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardContent className="p-5">
+          <div className="grid gap-4 sm:grid-cols-2">
+        <Card className="min-w-0 overflow-hidden">
+          <CardContent className="min-w-0 p-5">
             <p className="flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
-              <Wallet className="h-4 w-4" aria-hidden="true" /> Balance
+              <Wallet className="h-4 w-4 shrink-0" aria-hidden="true" /> Balance
             </p>
-            <p className="mt-1 text-2xl font-bold">{money(balance)}</p>
+            <p className="mt-1 text-xl font-bold tabular-nums leading-tight break-words sm:text-2xl">
+              {money(balance)}
+            </p>
             {pendingTopUps > 0 && (
               <p className="mt-0.5 text-xs text-warning">
                 {money(pendingTopUps)} top-up pending
@@ -123,28 +143,14 @@ export default async function WalletPage() {
             )}
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-5">
+        <Card className="min-w-0 overflow-hidden">
+          <CardContent className="min-w-0 p-5">
             <p className="flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
-              <ArrowDownLeft className="h-4 w-4 text-success" aria-hidden="true" /> In
+              <Coins className="h-4 w-4 shrink-0 text-warning" aria-hidden="true" /> Pending escrow
             </p>
-            <p className="mt-1 text-2xl font-bold text-success">{money(inAmount)}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-5">
-            <p className="flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
-              <ArrowUpRight className="h-4 w-4 text-destructive" aria-hidden="true" /> Out
+            <p className="mt-1 text-xl font-bold tabular-nums leading-tight break-words text-warning sm:text-2xl">
+              {money(pendingEscrow)}
             </p>
-            <p className="mt-1 text-2xl font-bold text-destructive">{money(outAmount)}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-5">
-            <p className="flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
-              <Coins className="h-4 w-4 text-warning" aria-hidden="true" /> Pending escrow
-            </p>
-            <p className="mt-1 text-2xl font-bold text-warning">{money(pendingEscrow)}</p>
             {pendingPayouts > 0 && (
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {money(pendingPayouts)} payout pending
@@ -160,12 +166,14 @@ export default async function WalletPage() {
           <Suspense fallback={<div className="h-72 animate-pulse rounded-xl bg-muted" />}>
             <TopUpForm />
           </Suspense>
-          <Card>
-            <CardContent className="p-5">
+          <Card className="min-w-0 overflow-hidden">
+            <CardContent className="min-w-0 p-5">
               <p className="flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
-                <Coins className="h-4 w-4 text-primary" aria-hidden="true" /> Total topped up
+                <Coins className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" /> Total topped up
               </p>
-              <p className="mt-1 text-2xl font-bold">{money(totalToppedUp)}</p>
+              <p className="mt-1 text-xl font-bold tabular-nums leading-tight break-words sm:text-2xl">
+                {money(totalToppedUp)}
+              </p>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 Lifetime wallet credits
               </p>
@@ -183,33 +191,67 @@ export default async function WalletPage() {
             <p className="text-sm text-muted-foreground">No transactions yet.</p>
           ) : (
             <ul className="divide-y divide-border">
-              {transactions.map((t: TransactionRow) => (
-                <li key={t.id} className="flex items-center justify-between gap-3 py-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold">
-                      {TX_TYPE_LABEL[t.type] ?? t.type}
-                    </p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {t.description ?? t.reference ?? ""}
-                    </p>
-                    <p className="text-xs text-muted-foreground">{formatDate(t.created_at)}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-semibold">{money(t.amount)}</p>
-                    <Badge
-                      variant={
-                        t.status === "COMPLETED"
-                          ? "success"
-                          : t.status === "PENDING"
-                          ? "warning"
-                          : "secondary"
+              {transactions.map((t: TransactionRow) => {
+                const dir = txDirection(t);
+                const tone =
+                  dir === "in"
+                    ? {
+                        accent: "border-l-success",
+                        text: "text-success",
+                        sign: "+",
+                        badge: "success" as const,
                       }
-                    >
-                      {t.status}
-                    </Badge>
-                  </div>
-                </li>
-              ))}
+                    : dir === "out"
+                    ? {
+                        accent: "border-l-destructive",
+                        text: "text-destructive",
+                        sign: "−",
+                        badge: "secondary" as const,
+                      }
+                    : {
+                        accent: "border-l-warning",
+                        text: "text-warning",
+                        sign: "",
+                        badge: "warning" as const,
+                      };
+                const Icon =
+                  dir === "in"
+                    ? ArrowDownLeft
+                    : dir === "out"
+                    ? ArrowUpRight
+                    : Clock;
+                return (
+                  <li
+                    key={t.id}
+                    className={`flex items-center justify-between gap-3 border-l-2 py-3 pl-3 ${tone.accent}`}
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span
+                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted ${tone.text}`}
+                        aria-hidden="true"
+                      >
+                        <Icon className="h-4 w-4" />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold">
+                          {TX_TYPE_LABEL[t.type] ?? t.type}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {t.description ?? t.reference ?? ""}
+                        </p>
+                        <p className="text-xs text-muted-foreground">{formatDate(t.created_at)}</p>
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className={`text-sm font-semibold tabular-nums ${tone.text}`}>
+                        {tone.sign}
+                        {money(t.amount)}
+                      </p>
+                      <Badge variant={tone.badge}>{t.status}</Badge>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </CardContent>

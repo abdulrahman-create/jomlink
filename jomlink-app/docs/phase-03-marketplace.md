@@ -22,6 +22,7 @@
 - **10% posting deposit** (refundable service charge, less the RM10 listing fee on pre-selection cancellation) auto-deducted from the Seeker's wallet at post time; posting blocked when wallet credit is insufficient (recorded in `transactions` as simulated)
 - Marketplace browse (`/marketplace`) with search + filters (category, country, reward, deadline, verified-only)
 - Opportunity detail page (`/opportunities/[id]`)
+- **Owner editing** of an Opportunity (`/opportunities/[id]/edit`) — the Seeker can amend a listing **only while no Linker has submitted a proposal**
 - Rule-based **match score** (entity relationship, role, industry, geography, reputation)
 - Restricted category flag for Government / Public Sector
 - New-opportunity notifications (in-app)
@@ -42,6 +43,7 @@
 - [x] Government category is flagged restricted
 - [x] Posting deposit math (10% of reward) is correct in the transaction record
 - [x] Posting is blocked when the Seeker's wallet has insufficient credit for the 10% deposit
+- [x] Seeker can edit their own opportunity, and editing is locked once a Linker submits a proposal
 
 ---
 
@@ -49,10 +51,11 @@
 - `src/app/opportunities/new/page.tsx` + `opportunity-form.tsx` (wizard)
 - `src/app/marketplace/page.tsx`
 - `src/app/opportunities/[id]/page.tsx` + `actions.tsx`
-- `src/app/actions/opportunities.ts`
+- `src/app/opportunities/[id]/edit/page.tsx` + `opportunity-edit-form.tsx` (owner edit)
+- `src/app/actions/opportunities.ts` — `createOpportunityAction`, `publishOpportunityAction`, `updateOpportunityAction`
 - `src/lib/matching.ts` — match score logic
 - `src/lib/funding.ts` — fee/escrow math
-- Query helpers added to `src/lib/queries.ts` (opportunities + transactions)
+- Query helpers added to `src/lib/queries.ts` (opportunities + transactions + `hasProposalsForOpportunity`)
 
 ---
 
@@ -66,6 +69,7 @@
 - [x] 3.6 Match-score module
 - [x] 3.7 Restricted category handling
 - [x] 3.8 Clean build + test
+- [x] 3.9 Owner editing + proposal edit-lock
 
 ---
 
@@ -79,3 +83,15 @@
 - **Unlimited posting:** a Seeker may post as many Opportunities as they wish, provided each posting is covered by sufficient wallet credit.
 - **Insufficient credit blocks posting:** the Seeker cannot post if their wallet cannot cover the 10% deposit.
 - **Reward is not charged at posting:** the full reward is only settled later, when the Seeker **accepts a Linker's submission** (see Phase 5).
+
+### Opportunity editing (Seeker)
+
+- **Owner-only:** only the Seeker who created the Opportunity (`seeker_id`) can edit it; other members see 404 on the edit route.
+- **Editable window:** the Seeker may edit while the status is one of `DRAFT`, `PENDING_PAYMENT`, `ACTIVE`, `PROPOSAL_RECEIVED`, `NEGOTIATION` **and** no Linker has submitted a proposal.
+- **Proposal locks editing — the key rule:** as soon as **any Linker submits a proposal**, the Opportunity becomes **read-only for the Seeker**. A Linker has based their proposal on the current terms, so the listing is frozen from that point (not merely at Linker *selection*).
+- **Selection / escrow locks editing:** once a Linker is selected or the reward is funded/escrowed (e.g. `LINKER_SELECTED`, `IN_PROGRESS`, `COMPLETED`, `DISPUTED`, `FAILED`, `EXPIRED`, `CANCELLED`), editing is also refused — the transaction is contractually committed.
+- **Enforcement:** the rule is enforced in **three places** so it cannot be bypassed:
+  1. `updateOpportunityAction` (server action) re-checks status **and** `hasProposalsForOpportunity(opp.id)` before writing;
+  2. the edit page (`/opportunities/[id]/edit`) renders a lock notice instead of the form when the rule blocks editing;
+  3. the detail page hides the **Edit opportunity** button when `canEdit` is false.
+- **No silent overwrite:** the underlying write still goes through `updateOpportunityIfOwned(id, seekerId, …)`, so even a direct call cannot modify someone else's listing.

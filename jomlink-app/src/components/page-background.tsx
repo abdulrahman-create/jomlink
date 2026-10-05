@@ -25,7 +25,13 @@ function prefersReducedMotion(): boolean {
  */
 export function PageBackground({ imageSrc }: { imageSrc: string }) {
   const [progress, setProgress] = React.useState(0);
-  const [reduced] = React.useState(prefersReducedMotion);
+  // Must start as the server value (false) so the first client render matches
+  // the server HTML; the media query is applied after hydration.
+  const [reduced, setReduced] = React.useState(false);
+
+  React.useEffect(() => {
+    setReduced(prefersReducedMotion());
+  }, []);
 
   React.useEffect(() => {
     if (reduced) return;

@@ -75,6 +75,17 @@ do $$ begin
   create type jomlink.evidence_type as enum ('INTRODUCTION','COMMUNICATION','MEETING_PHOTO','MEETING_SCREENSHOT','APPOINTMENT_CONFIRMATION','TARGET_ACKNOWLEDGEMENT','OTHER');
 exception when duplicate_object then null; end $$;
 
+-- ── 1b. Enum VALUE self-heal ───────────────────────────────────
+-- `create type` above is a NO-OP on a live DB where the enum already exists,
+-- so any VALUES added to an enum AFTER the type was first created would be
+-- missing there. Add them explicitly (idempotent). NOTE: on PostgreSQL < 12
+-- `ALTER TYPE ... ADD VALUE` cannot run inside a transaction block — run this
+-- section on its own, or ensure the migration is not wrapped in BEGIN/COMMIT.
+alter type jomlink.transaction_type add value if not exists 'POSTING_DEPOSIT';
+alter type jomlink.transaction_type add value if not exists 'LISTING_FEE';
+alter type jomlink.transaction_type add value if not exists 'WALLET_CREDIT';
+alter type jomlink.transaction_type add value if not exists 'WALLET_DEBIT';
+
 -- ── 2. Tables ──────────────────────────────────────────────────
 -- Each table is prefixed `jomlink.` so it never collides with `public`.
 -- Auth conflict-avoidance: `users` is named `users` (NOT auth.users).
@@ -94,12 +105,18 @@ create table if not exists jomlink.users (
   status             text not null default 'ACTIVE',
   supabase_user_id   text unique,
   app                text not null default 'jomlink',  -- auth isolation tag
-  biometric_consent        boolean not null default false,
-  biometric_consent_at     timestamptz,
-  biometric_consent_version text,
   created_at         timestamptz not null default now(),
   updated_at         timestamptz not null default now()
 );
+
+-- Biometric consent columns — added via ALTER because `users` already exists in
+-- a live database, so `create table if not exists` above is a no-op there.
+-- `add column if not exists` makes this safe to re-run on both fresh and
+-- existing databases.
+alter table jomlink.users
+  add column if not exists biometric_consent        boolean not null default false,
+  add column if not exists biometric_consent_at     timestamptz,
+  add column if not exists biometric_consent_version text;
 
 create table if not exists jomlink.member_profiles (
   id                      text primary key default gen_random_uuid()::text,
@@ -293,9 +310,16 @@ create table if not exists jomlink.transactions (
   settlement_amount numeric(12,2),
   description       text,
   reference         text,
+  gateway           text,
+  gateway_ref       text,
   created_at        timestamptz not null default now(),
   updated_at        timestamptz not null default now()
 );
+
+-- Self-healing: a `create table if not exists` is a NO-OP on an existing DB,
+-- so add the payment-gateway columns explicitly for already-created tables.
+alter table jomlink.transactions add column if not exists gateway text;
+alter table jomlink.transactions add column if not exists gateway_ref text;
 
 create table if not exists jomlink.transaction_ledger (
   id              text primary key default gen_random_uuid()::text,
@@ -432,6 +456,16 @@ create table if not exists jomlink.kyc_biometrics (
 
 create index if not exists kyc_biometrics_user_idx on jomlink.kyc_biometrics (user_id);
 create index if not exists kyc_biometrics_label_idx on jomlink.kyc_biometrics (label_status);
+
+-- Explicit grants for the new table + its sequence (the blanket grant in §5
+-- only covers tables that existed when this migration was first run).
+grant usage on schema jomlink to anon, authenticated, service_role;
+grant all on jomlink.kyc_biometrics to service_role, authenticated;
+grant all on all sequences in schema jomlink to service_role, authenticated;
+
+-- Ask PostgREST to reload its schema cache so the new table/columns/relationships
+-- are visible to the REST API immediately (avoids stale-cache 42501/PGRST errors).
+notify pgrst, 'reload schema';
 
 create table if not exists jomlink.admin_members (
   id           text primary key default gen_random_uuid()::text,

@@ -125,6 +125,8 @@ export interface TransactionRow {
   settlement_amount: number | null;
   description: string | null;
   reference: string | null;
+  gateway: string | null;
+  gateway_ref: string | null;
   created_at: string;
   updated_at: string;
 }

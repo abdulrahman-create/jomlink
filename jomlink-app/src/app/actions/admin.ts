@@ -17,6 +17,7 @@ import {
   createRefund,
 } from "@/lib/queries";
 import { accounts, doubleEntry } from "@/lib/ledger";
+import { chargePostingDeposit } from "@/lib/posting";
 
 // ── Member Management Actions ────────────────────────────────
 
@@ -99,10 +100,58 @@ export async function moderateOpportunityAction(formData: FormData) {
   if (!opportunityId || !newStatus) {
     throw new Error("Opportunity ID and target status required");
   }
+  if (newStatus !== "ACTIVE" && newStatus !== "CANCELLED") {
+    throw new Error("Unsupported moderation status: " + newStatus);
+  }
 
   const opp = await getOpportunityById(opportunityId);
   if (!opp) {
     throw new Error("Opportunity not found");
+  }
+
+  // A CANCELLED opportunity has been withdrawn by the Seeker and its posting
+  // deposit refunded (less the listing fee). It must never be re-published by
+  // moderation — re-approving it would post it again with no deposit collected.
+  // To go live again the Seeker must post a fresh opportunity.
+  if (newStatus === "ACTIVE" && opp.status === "CANCELLED") {
+    throw new Error(
+      "This opportunity was cancelled and its posting deposit was refunded. It cannot be re-approved — ask the Seeker to post a new opportunity."
+    );
+  }
+
+  // Approving an opportunity that has NOT yet paid its posting deposit (e.g. a
+  // DRAFT the Seeker saved but never posted) must charge the 10% deposit — the
+  // admin "Approve" button is an alternative entry point to going live, and it
+  // must not let an opportunity go ACTIVE for free (blueprint §3.9).
+  // `activation_fee` is only a hint (nullable, never reset on cancel) so the
+  // charge routine also checks the ledger before collecting a deposit.
+  const alreadyCharged = Number(opp.activation_fee || 0) > 0;
+  let approvedDeposit: number | null = null;
+  if (newStatus === "ACTIVE" && !alreadyCharged) {
+    const charged = await chargePostingDeposit(opp.seeker_id, opp);
+    if (!charged.ok) {
+      // Ledger says the deposit was already collected (possibly refunded on a
+      // prior cancellation) — do NOT collect again and do NOT re-approve for
+      // free. Treat it as a no-op and record the decision.
+      if (charged.error === "already-paid") {
+        await recordAuditLog({
+          adminId: admin.user.id,
+          action: AUDIT_ACTIONS.OPPORTUNITY_APPROVED,
+          entity: "OPPORTUNITY",
+          entityId: opportunityId,
+          details: {
+            previousStatus: opp.status,
+            newStatus: opp.status,
+            skipped: "deposit-already-collected",
+            moderatedBy: admin.user.email,
+          },
+        });
+        revalidatePath("/admin/opportunities");
+        return;
+      }
+      throw new Error(charged.error);
+    }
+    approvedDeposit = charged.deposit;
   }
 
   // If rejected and funded, initiate refund of reward escrow back to Seeker
@@ -139,6 +188,7 @@ export async function moderateOpportunityAction(formData: FormData) {
 
   await updateOpportunityAdmin(opportunityId, {
     status: newStatus,
+    ...(approvedDeposit !== null ? { activation_fee: approvedDeposit } : {}),
   });
 
   await recordAuditLog({

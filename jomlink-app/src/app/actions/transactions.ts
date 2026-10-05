@@ -337,7 +337,12 @@ export async function topUpWalletAction(
     return { error: `Maximum top-up is RM${WALLET.TOPUP_MAX.toFixed(2)}.` };
   }
 
-  const reference = `TOPUP-${user.id.slice(0, 8)}-${Date.now()}`;
+  // ToyyibPay echoes this back as `order_id`. Keep it SHORT and alphanumeric —
+  // long/reference values with hyphens get dropped by the gateway, which is what
+  // stranded top-ups in PENDING. Follow the docs' own sample ('AFR341DFI').
+  const reference = `JL${Date.now().toString(36).toUpperCase()}${user.id
+    .replace(/-/g, "")
+    .slice(0, 6)}`;
 
   try {
     // 1) Create the ToyyibPay bill (hosted payment page).
@@ -353,14 +358,16 @@ export async function topUpWalletAction(
       expiryDays: 3,
     });
 
-    if (!bill.ok || !bill.paymentUrl) {
+    if (!bill.ok || !bill.paymentUrl || !bill.billCode) {
       console.error("topUpWalletAction: createBill failed", bill.error);
       return {
         error: `Could not start the payment: ${bill.error ?? "unknown error"}`,
       };
     }
 
-    // 2) Record a PENDING transaction so we can reconcile the callback.
+    // 2) Record a PENDING transaction so we can reconcile the callback. We store
+    //    the ToyyibPay BillCode in `gateway_ref` — the gateway ALWAYS echoes its
+    //    own bill code back, so reconciliation never depends on `order_id`.
     await createTransaction({
       user_id: user.id,
       type: "WALLET_CREDIT",
@@ -369,6 +376,8 @@ export async function topUpWalletAction(
       currency: "MYR",
       description: "Wallet top-up (awaiting payment)",
       reference,
+      gateway: "toyyibpay",
+      gateway_ref: bill.billCode,
     });
 
     revalidatePath("/dashboard/wallet");

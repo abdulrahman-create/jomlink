@@ -1,14 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
-import {
-  getBillTransactions,
-  PAYMENT_STATUS,
-} from "@/lib/toyyibpay";
-import {
-  getTransactionByReference,
-  updateTransactionStatus,
-  createLedgerEntry,
-} from "@/lib/queries";
-import { doubleEntry, accounts } from "@/lib/ledger";
+import { PAYMENT_STATUS } from "@/lib/toyyibpay";
+import { findPaymentTransaction, updateTransactionStatus } from "@/lib/queries";
+import { settleTopUp } from "@/lib/payments";
 
 /**
  * ToyyibPay return URL — the member is redirected here after paying.
@@ -28,13 +21,15 @@ export async function GET(request: NextRequest) {
 
   const walletUrl = new URL("/dashboard/wallet", request.url);
 
-  if (statusId !== PAYMENT_STATUS.SUCCESS || !billcode || !orderId) {
-    walletUrl.searchParams.set("payment", "failed");
+  // Resolve our transaction by the gateway bill code (always present) or the
+  // external reference. NOTE: `order_id` may be empty — never hard-fail on it.
+  if (!billcode && !orderId) {
+    walletUrl.searchParams.set("payment", "unknown");
     return NextResponse.redirect(walletUrl);
   }
 
   try {
-    const tx = await getTransactionByReference(orderId);
+    const tx = await findPaymentTransaction({ billCode: billcode, orderId });
     if (!tx) {
       walletUrl.searchParams.set("payment", "unknown");
       return NextResponse.redirect(walletUrl);
@@ -46,27 +41,23 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(walletUrl);
     }
 
-    // Confirm with ToyyibPay before crediting.
-    const billTx = await getBillTransactions(billcode, PAYMENT_STATUS.SUCCESS);
-    const confirmed = billTx.some(
-      (t) => t.billpaymentStatus === PAYMENT_STATUS.SUCCESS
-    );
-    if (!confirmed) {
-      walletUrl.searchParams.set("payment", "pending");
+    // An explicit failure from the gateway → mark FAILED, don't leave pending.
+    if (statusId === PAYMENT_STATUS.FAIL) {
+      if (tx.status === "PENDING") await updateTransactionStatus(tx.id, "FAILED");
+      walletUrl.searchParams.set("payment", "failed");
       return NextResponse.redirect(walletUrl);
     }
 
-    const amount = Number(tx.amount);
-    await updateTransactionStatus(tx.id, "COMPLETED");
-    for (const e of doubleEntry(
-      accounts.externalFunding,
-      accounts.wallet(tx.user_id),
-      amount
-    )) {
-      await createLedgerEntry({ transaction_id: tx.id, ...e });
-    }
-
-    walletUrl.searchParams.set("payment", "success");
+    // Otherwise verify against the API and settle (paid → credit, else pending).
+    const result = await settleTopUp(tx, billcode, true);
+    walletUrl.searchParams.set(
+      "payment",
+      result.outcome === "credited" || result.outcome === "already"
+        ? "success"
+        : result.outcome === "failed"
+        ? "failed"
+        : "pending"
+    );
     return NextResponse.redirect(walletUrl);
   } catch (e) {
     console.error("toyyibpay return handler error", e);

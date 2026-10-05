@@ -203,4 +203,34 @@ export const PAYMENT_STATUS = {
   SUCCESS: "1",
   PENDING: "2",
   FAIL: "3",
+  PENDING_SETTLEMENT: "4",
 } as const;
+
+/**
+ * Interpret a `getBillTransactions` result into a single outcome.
+ *
+ * ToyyibPay reports `billpaymentStatus` as:
+ *   1 = successful, 2 = pending, 3 = unsuccessful, 4 = pending (settlement)
+ *
+ * A bill can have multiple transaction rows; a single success is enough to
+ * consider the bill paid.
+ */
+export type BillOutcome = "paid" | "pending" | "failed";
+
+export function interpretBillOutcome(
+  transactions: BillTransaction[]
+): BillOutcome {
+  if (transactions.some((t) => t.billpaymentStatus === PAYMENT_STATUS.SUCCESS)) {
+    return "paid";
+  }
+  if (
+    transactions.some(
+      (t) =>
+        t.billpaymentStatus === PAYMENT_STATUS.PENDING ||
+        t.billpaymentStatus === PAYMENT_STATUS.PENDING_SETTLEMENT
+    )
+  ) {
+    return "pending";
+  }
+  return "failed";
+}

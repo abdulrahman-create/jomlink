@@ -29,6 +29,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { StatCard } from "@/components/stat-card";
 import { formatDate, formatMYR, OPPORTUNITY_STATUS_LABELS } from "@/lib/constants";
+import {
+  PROPOSAL_STATUS_LABEL,
+  CONNECTION_STATUS_LABEL,
+  statusVariant,
+} from "@/lib/status";
 import type {
   OpportunityRow,
   ConnectionRow,
@@ -41,32 +46,6 @@ export const metadata = {
   description:
     "Your Jomlink hub: opportunities, proposals, connections, earnings and escrow at a glance.",
 };
-
-const PROPOSAL_STATUS_LABEL: Record<string, string> = {
-  SUBMITTED: "Submitted",
-  UNDER_REVIEW: "Under review",
-  ACCEPTED: "Accepted",
-  REJECTED: "Rejected",
-  WITHDRAWN: "Withdrawn",
-  SELECTED: "Selected",
-  COMPLETED: "Completed",
-};
-
-const CONNECTION_STATUS_LABEL: Record<string, string> = {
-  PENDING_ACKNOWLEDGEMENT: "Pending acknowledgement",
-  IN_PROGRESS: "In progress",
-  AWAITING_VERIFICATION: "Awaiting verification",
-  COMPLETED: "Completed",
-  FAILED: "Failed",
-  DISPUTED: "Disputed",
-};
-
-function statusVariant(status: string) {
-  if (status === "COMPLETED" || status === "SELECTED" || status === "ACTIVE") return "success";
-  if (status === "DISPUTED" || status === "FAILED" || status === "REJECTED") return "destructive";
-  if (status === "PENDING_PAYMENT" || status === "AWAITING_VERIFICATION") return "warning";
-  return "secondary";
-}
 
 export default async function DashboardPage() {
   const user = await getCurrentUser();
@@ -278,7 +257,7 @@ export default async function DashboardPage() {
             <CardHeader className="flex-row items-center justify-between space-y-0">
               <CardTitle className="text-lg">Proposals Received</CardTitle>
               <Button asChild variant="ghost" size="sm">
-                <Link href="/dashboard/proposals">All</Link>
+                <Link href="/dashboard/proposals-received">All</Link>
               </Button>
             </CardHeader>
             <CardContent>

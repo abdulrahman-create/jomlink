@@ -182,7 +182,7 @@ export default async function AdminOpportunitiesPage({
                         </form>
                       )}
 
-                      {canModerate && opp.status !== "ACTIVE" && opp.status !== "COMPLETED" && (
+                      {canModerate && opp.status !== "ACTIVE" && opp.status !== "COMPLETED" && opp.status !== "CANCELLED" && (
                         <form action={moderateOpportunityAction}>
                           <input type="hidden" name="opportunityId" value={opp.id} />
                           <input type="hidden" name="status" value="ACTIVE" />

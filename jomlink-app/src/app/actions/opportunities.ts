@@ -8,12 +8,9 @@ import {
   createOpportunity,
   updateOpportunityIfOwned,
   getOpportunityById,
-  createTransaction,
-  createLedgerEntry,
-  getWalletBalance,
+  hasProposalsForOpportunity,
 } from "@/lib/queries";
-import { postingDepositFor } from "@/lib/funding";
-import { doubleEntry, accounts } from "@/lib/ledger";
+import { chargePostingDeposit } from "@/lib/posting";
 import { OPPORTUNITY_CATEGORIES, FEES, formatMYR } from "@/lib/constants";
 
 // ── Validation ──────────────────────────────────────────────
@@ -65,8 +62,14 @@ const RESTRICTED_CATEGORY = "GOVERNMENT_PUBLIC_SECTOR";
 
 /**
  * Create a NEW opportunity.
- * The Seeker posts a Draft. They can either leave it as DRAFT or publish it
- * immediately (DRAFT → ACTIVE, 10% posting deposit deducted from the wallet).
+ *
+ * The form supports two intents (via the `intent` field):
+ *   • "draft"   — save as a DRAFT only; no deposit is charged. The Seeker can
+ *                 publish it later from the opportunity detail page.
+ *   • "publish" — create the opportunity AND post it immediately. The Seeker
+ *                 must have enough wallet credit for the 10% posting deposit,
+ *                 which is deducted (POSTING_DEPOSIT) as the opportunity goes
+ *                 ACTIVE. Posting is blocked when the wallet cannot cover it.
  */
 export async function createOpportunityAction(
   prevState: OpportunityState | undefined,
@@ -74,6 +77,9 @@ export async function createOpportunityAction(
 ): Promise<OpportunityState> {
   const user = await getCurrentUser();
   if (!user) return { error: "Not authenticated." };
+
+  const intent = String(formData.get("intent") || "draft");
+  const publishNow = intent === "publish";
 
   const parsed = OpportunitySchema.safeParse({
     title: formData.get("title"),
@@ -123,8 +129,30 @@ export async function createOpportunityAction(
 
   try {
     const opp = await createOpportunity(user.id, values);
+
+    // "Publish" intent: charge the 10% posting deposit and go live right away.
+    // If the wallet can't cover the deposit, the opportunity is rolled back so
+    // we never leave a half-posted (unpaid) listing behind.
+    if (publishNow) {
+      const charged = await chargePostingDeposit(user.id, opp);
+      if (!charged.ok) {
+        await updateOpportunityIfOwned(opp.id, user.id, { status: "CANCELLED" });
+        return { error: charged.error };
+      }
+
+      await updateOpportunityIfOwned(opp.id, user.id, {
+        status: "ACTIVE",
+        activation_fee: charged.deposit,
+        funded_amount: 0,
+      });
+
+      revalidatePath("/dashboard");
+      revalidatePath("/dashboard/wallet");
+    }
+
     revalidatePath("/marketplace");
     revalidatePath("/opportunities/new");
+    revalidatePath("/opportunities/" + opp.id);
     return { success: true, opportunityId: opp.id };
   } catch (e: unknown) {
     console.error("createOpportunityAction error", e);
@@ -162,46 +190,15 @@ export async function publishOpportunityAction(
     return { error: "Only draft opportunities can be published." };
   }
 
-  const deposit = postingDepositFor(Number(opp.offer_amount) || 0);
-
-  // Posting is blocked unless the wallet can cover the 10% deposit.
-  const balance = await getWalletBalance(user.id);
-  if (balance < deposit) {
-    return {
-      error: `Insufficient wallet credit. Posting requires a ${formatMYR(
-        deposit
-      )} deposit (10% of the reward), but your balance is ${formatMYR(
-        balance
-      )}. Top up your wallet and try again.`,
-    };
-  }
-
   try {
-    // 1) Posting deposit → platform (POSTING_DEPOSIT). Refundable less the
-    //    listing fee if the Seeker cancels before selecting a Linker.
-    const depositTx = await createTransaction({
-      user_id: user.id,
-      opportunity_id: opp.id,
-      type: "POSTING_DEPOSIT",
-      status: "COMPLETED",
-      amount: deposit,
-      fee_raw: deposit,
-      currency: "MYR",
-      description: `Posting deposit (10%) for "${opp.title}"`,
-      reference: `OPP-DEP-${opp.id.slice(0, 8)}-${Date.now()}`,
-    });
-    for (const e of doubleEntry(
-      accounts.wallet(user.id),
-      accounts.platformActivation,
-      deposit
-    )) {
-      await createLedgerEntry({ transaction_id: depositTx.id, ...e });
-    }
+    // 1) Take the 10% posting deposit (blocked if the wallet can't cover it).
+    const charged = await chargePostingDeposit(user.id, opp);
+    if (!charged.ok) return { error: charged.error };
 
     // 2) Opportunity goes live. Reward is NOT funded yet (funded_amount = 0).
     await updateOpportunityIfOwned(opp.id, user.id, {
       status: "ACTIVE",
-      activation_fee: deposit,
+      activation_fee: charged.deposit,
       funded_amount: 0,
     });
 
@@ -213,6 +210,124 @@ export async function publishOpportunityAction(
   } catch (e: unknown) {
     console.error("publishOpportunityAction error", e);
     return { error: "Could not publish the opportunity. Please try again." };
+  }
+}
+
+/**
+ * Statuses in which the Seeker may still edit their own opportunity.
+ *
+ * Editing is additionally blocked as soon as ANY Linker has submitted a
+ * proposal (see `hasProposalsForOpportunity`) — a Linker has already based
+ * their proposal on the current terms, so the listing is frozen from that
+ * point even if the stored status has not yet advanced to PROPOSAL_RECEIVED.
+ *
+ * Once a Linker is selected / the reward is funded / the work is in progress,
+ * the listing is contractually committed, so editing is frozen too.
+ */
+const EDITABLE_STATUSES = new Set([
+  "DRAFT",
+  "PENDING_PAYMENT",
+  "ACTIVE",
+  "PROPOSAL_RECEIVED",
+  "NEGOTIATION",
+]);
+
+function isEditableStatus(status: string): boolean {
+  return EDITABLE_STATUSES.has(status);
+}
+
+/**
+ * Update an EXISTING opportunity owned by the current Seeker.
+ *
+ * Editing is only allowed while the opportunity is in an editable status
+ * (see EDITABLE_STATUSES) AND no Linker has submitted a proposal yet. The
+ * Seeker can only edit their own listing — the ownership check is enforced
+ * both here and by `updateOpportunityIfOwned`.
+ */
+export async function updateOpportunityAction(
+  prevState: OpportunityState | undefined,
+  formData: FormData
+): Promise<OpportunityState> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "Not authenticated." };
+
+  const oppId = String(formData.get("id") || "");
+  if (!oppId) return { error: "Missing opportunity id." };
+
+  const opp = await getOpportunityById(oppId);
+  if (!opp || opp.seeker_id !== user.id) {
+    return { error: "Opportunity not found or not yours." };
+  }
+  if (!isEditableStatus(opp.status)) {
+    return {
+      error:
+        "This opportunity can no longer be edited because a Linker has been selected or the reward is already in escrow.",
+    };
+  }
+  if (await hasProposalsForOpportunity(opp.id)) {
+    return {
+      error:
+        "This opportunity can no longer be edited because a Linker has already submitted a proposal.",
+    };
+  }
+
+  const parsed = OpportunitySchema.safeParse({
+    title: formData.get("title"),
+    category: formData.get("category"),
+    targetEntity: formData.get("targetEntity"),
+    targetRole: formData.get("targetRole") || undefined,
+    targetRoleExact: formData.get("targetRoleExact") === "on",
+    purpose: formData.get("purpose"),
+    businessDescription: formData.get("businessDescription") || undefined,
+    requiredOutcome: formData.get("requiredOutcome"),
+    connectionMethod: formData.get("connectionMethod") || undefined,
+    acceptableAlternatives: formData.get("acceptableAlternatives") || undefined,
+    geographicPreference: formData.get("geographicPreference") || undefined,
+    deadline: formData.get("deadline") || undefined,
+    offerAmount: formData.get("offerAmount"),
+    confidentiality: formData.get("confidentiality") || "PUBLIC",
+    additionalRequirements: formData.get("additionalRequirements") || undefined,
+  });
+
+  if (!parsed.success) {
+    return { fieldErrors: parsed.error.flatten().fieldErrors };
+  }
+
+  const d = parsed.data;
+  const isRestricted = d.category === RESTRICTED_CATEGORY;
+
+  const values: Record<string, unknown> = {
+    title: d.title,
+    category: d.category,
+    target_entity: d.targetEntity,
+    target_role: d.targetRole || null,
+    target_role_exact: d.targetRoleExact ?? true,
+    purpose: d.purpose,
+    business_description: d.businessDescription || null,
+    required_outcome: d.requiredOutcome,
+    connection_method: d.connectionMethod || null,
+    acceptable_alternatives: d.acceptableAlternatives || null,
+    geographic_preference: d.geographicPreference || null,
+    deadline: d.deadline ? d.deadline.toISOString() : null,
+    offer_amount: d.offerAmount,
+    currency: "MYR",
+    confidentiality: isRestricted ? "RESTRICTED" : d.confidentiality,
+    additional_requirements: d.additionalRequirements || null,
+    is_restricted_category: isRestricted,
+  };
+
+  try {
+    const updated = await updateOpportunityIfOwned(opp.id, user.id, values);
+    if (!updated) {
+      return { error: "Opportunity not found or not yours." };
+    }
+    revalidatePath("/marketplace");
+    revalidatePath("/opportunities/" + opp.id);
+    revalidatePath("/opportunities/" + opp.id + "/edit");
+    return { success: true, opportunityId: opp.id };
+  } catch (e: unknown) {
+    console.error("updateOpportunityAction error", e);
+    return { error: "Could not update the opportunity. Please try again." };
   }
 }
 

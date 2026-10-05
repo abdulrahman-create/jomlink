@@ -2,9 +2,9 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
-  BadgeCheck,
   Coins,
   MapPin,
+  Pencil,
   ShieldAlert,
   Target,
   Timer,
@@ -59,6 +59,19 @@ const STATUS_LABEL: Record<string, string> = {
   CANCELLED: "Cancelled",
 };
 
+/**
+ * Statuses in which the owning Seeker may still edit their opportunity.
+ * Editing is also blocked once any Linker has submitted a proposal, or once a
+ * Linker is selected / the reward is in escrow (the listing is then committed).
+ */
+const EDITABLE_STATUSES = new Set([
+  "DRAFT",
+  "PENDING_PAYMENT",
+  "ACTIVE",
+  "PROPOSAL_RECEIVED",
+  "NEGOTIATION",
+]);
+
 export default async function OpportunityDetailPage({
   params,
 }: {
@@ -77,6 +90,11 @@ export default async function OpportunityDetailPage({
     proposals.find((p) => p.status === "SELECTED") ??
     proposals.find((p) => p.status === "ACCEPTED") ??
     null;
+
+  // The Seeker may edit while the status allows it AND no Linker has submitted
+  // a proposal yet — a proposal freezes the terms it was based on.
+  const canEdit =
+    isOwner && EDITABLE_STATUSES.has(opp.status) && proposals.length === 0;
 
   // For a logged-in Linker, compute a match score against their profile.
   let matchScore: number | null = null;
@@ -157,6 +175,24 @@ export default async function OpportunityDetailPage({
             <p className="text-sm text-muted-foreground">Reward</p>
           </div>
         </div>
+
+        {/* Owner: edit the listing while it is still editable */}
+        {canEdit && (
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">
+            <div className="text-sm">
+              <p className="font-semibold">Manage your listing</p>
+              <p className="text-muted-foreground">
+                You can edit the details, reward and deadline until a Linker submits a
+                proposal.
+              </p>
+            </div>
+            <Button asChild variant="outline">
+              <Link href={"/opportunities/" + opp.id + "/edit"}>
+                <Pencil className="h-4 w-4" aria-hidden="true" /> Edit opportunity
+              </Link>
+            </Button>
+          </div>
+        )}
 
         {/* Owner actions */}
         {isOwner && opp.status === "DRAFT" && (
@@ -305,38 +341,55 @@ export default async function OpportunityDetailPage({
                 </div>
               )}
 
-              <div className="rounded-md border border-border bg-muted p-3">
-                <p className="mb-2 flex items-center gap-1.5 font-semibold">
-                  <Coins className="h-4 w-4 text-primary" aria-hidden="true" /> Funding breakdown
-                </p>
-                <ul className="space-y-1 text-muted-foreground">
-                  <li className="flex justify-between">
-                    <span>Posting deposit (10%, refundable less listing fee)</span>
-                    <span className="tabular-nums text-foreground">{money(funding.postingDeposit)}</span>
-                  </li>
-                  <li className="flex justify-between pl-4 text-xs">
-                    <span className="italic">— incl. {money(funding.listingFee)} non-refundable listing fee</span>
-                    <span className="tabular-nums">{money(funding.listingFee)}</span>
-                  </li>
-                  <li className="flex justify-between">
-                    <span>Reward (settled on Linker acceptance)</span>
-                    <span className="tabular-nums text-foreground">{money(funding.reward)}</span>
-                  </li>
-                  <li className="flex justify-between border-t border-border pt-1 font-medium">
-                    <span>Total cost to Seeker</span>
-                    <span className="tabular-nums text-foreground">
-                      {money(funding.reward + funding.postingDeposit)}
-                    </span>
-                  </li>
-                </ul>
-                <p className="mt-2 text-xs">
-                  The deposit is charged at posting — the {money(funding.listingFee)} listing
-                  fee is charged <strong className="text-foreground">inside</strong> the
-                  deposit. It is refunded (less the listing fee) if you cancel before a Linker
-                  is selected, and consumed on completion. The reward is held in escrow only
-                  once you accept a Linker.
-                </p>
-              </div>
+              {isOwner ? (
+                <div className="rounded-md border border-border bg-muted p-3">
+                  <p className="mb-2 flex items-center gap-1.5 font-semibold">
+                    <Coins className="h-4 w-4 text-primary" aria-hidden="true" /> Funding breakdown
+                  </p>
+                  <ul className="space-y-1 text-muted-foreground">
+                    <li className="flex justify-between">
+                      <span>Posting deposit (10%, refundable less listing fee)</span>
+                      <span className="tabular-nums text-foreground">{money(funding.postingDeposit)}</span>
+                    </li>
+                    <li className="flex justify-between pl-4 text-xs">
+                      <span className="italic">— incl. {money(funding.listingFee)} non-refundable listing fee</span>
+                      <span className="tabular-nums">{money(funding.listingFee)}</span>
+                    </li>
+                    <li className="flex justify-between">
+                      <span>Reward (settled on Linker acceptance)</span>
+                      <span className="tabular-nums text-foreground">{money(funding.reward)}</span>
+                    </li>
+                    <li className="flex justify-between border-t border-border pt-1 font-medium">
+                      <span>Total cost to Seeker</span>
+                      <span className="tabular-nums text-foreground">
+                        {money(funding.reward + funding.postingDeposit)}
+                      </span>
+                    </li>
+                  </ul>
+                  <p className="mt-2 text-xs">
+                    The deposit is charged at posting — the {money(funding.listingFee)} listing
+                    fee is charged <strong className="text-foreground">inside</strong> the
+                    deposit. It is refunded (less the listing fee) if you cancel before a Linker
+                    is selected, and consumed on completion. The reward is held in escrow only
+                    once you accept a Linker.
+                  </p>
+                </div>
+              ) : (
+                // Linkers only see the reward they are being offered. The Seeker's
+                // posting deposit, listing fee and total cost are private.
+                <div className="rounded-md border border-border bg-muted p-3">
+                  <p className="mb-2 flex items-center gap-1.5 font-semibold">
+                    <Coins className="h-4 w-4 text-primary" aria-hidden="true" /> Reward
+                  </p>
+                  <p className="text-xl font-bold text-primary">
+                    {money(funding.reward)}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Settled to you on acceptance of your proposal, less the platform's
+                    Linker service fee.
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

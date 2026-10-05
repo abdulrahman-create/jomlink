@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useActionState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Coins, Loader2, Save, Send, ShieldAlert } from "lucide-react";
+import { Coins, Loader2, Save, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,11 +12,11 @@ import { Select } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { OPPORTUNITY_CATEGORIES, FEES, formatMYR } from "@/lib/constants";
 import {
-  createOpportunityAction,
+  updateOpportunityAction,
   type OpportunityState,
 } from "@/app/actions/opportunities";
 import { computeFunding } from "@/lib/funding";
-import type { BusinessProfileRow } from "@/lib/jomlink-types";
+import type { OpportunityRow } from "@/lib/jomlink-types";
 
 const RESTRICTED = "GOVERNMENT_PUBLIC_SECTOR";
 
@@ -28,25 +28,27 @@ function money(n: number) {
   }).format(n);
 }
 
+/** Convert a stored date/timestamp to the `yyyy-mm-dd` a date input expects. */
+function toDateInput(value: string | null): string {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0, 10);
+}
+
 const initialState: OpportunityState = {};
 
-export function OpportunityForm({
-  businessProfiles,
-  defaultCountry,
-}: {
-  businessProfiles: BusinessProfileRow[];
-  defaultCountry: string;
-}) {
+export function OpportunityEditForm({ opportunity }: { opportunity: OpportunityRow }) {
   const router = useRouter();
   const [state, action, pending] = useActionState<OpportunityState, FormData>(
-    createOpportunityAction,
+    updateOpportunityAction,
     initialState
   );
 
-  const [category, setCategory] = React.useState<string>(
-    OPPORTUNITY_CATEGORIES[0].value
+  const [category, setCategory] = React.useState<string>(opportunity.category);
+  const [reward, setReward] = React.useState<string>(
+    String(Number(opportunity.offer_amount ?? 0))
   );
-  const [reward, setReward] = React.useState("");
   const isRestricted = category === RESTRICTED;
 
   const funding = computeFunding(Number(reward) || 0);
@@ -59,6 +61,8 @@ export function OpportunityForm({
 
   return (
     <form action={action} className="space-y-6">
+      <input type="hidden" name="id" value={opportunity.id} />
+
       {state?.error && (
         <p role="alert" className="rounded-md bg-destructive-bg px-3 py-2 text-sm text-destructive">
           {state.error}
@@ -85,6 +89,7 @@ export function OpportunityForm({
               id="title"
               name="title"
               placeholder="e.g. Access to procurement director at Telco X"
+              defaultValue={opportunity.title}
               required
             />
             {state?.fieldErrors?.title && (
@@ -110,6 +115,7 @@ export function OpportunityForm({
                 id="targetEntity"
                 name="targetEntity"
                 placeholder="e.g. Celcom Digi, MBSB Bank, Ministry of Finance"
+                defaultValue={opportunity.target_entity}
                 required
               />
               {state?.fieldErrors?.targetEntity && (
@@ -121,16 +127,31 @@ export function OpportunityForm({
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="targetRole">Target role (optional)</Label>
-              <Input id="targetRole" name="targetRole" placeholder="e.g. Chief Procurement Officer" />
+              <Input
+                id="targetRole"
+                name="targetRole"
+                placeholder="e.g. Chief Procurement Officer"
+                defaultValue={opportunity.target_role ?? ""}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="connectionMethod">Preferred connection method</Label>
-              <Input id="connectionMethod" name="connectionMethod" placeholder="e.g. Warm intro, event meeting" />
+              <Input
+                id="connectionMethod"
+                name="connectionMethod"
+                placeholder="e.g. Warm intro, event meeting"
+                defaultValue={opportunity.connection_method ?? ""}
+              />
             </div>
           </div>
 
           <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="targetRoleExact" className="h-4 w-4 rounded border-border text-primary" />
+            <input
+              type="checkbox"
+              name="targetRoleExact"
+              defaultChecked={opportunity.target_role_exact}
+              className="h-4 w-4 rounded border-border text-primary"
+            />
             Exact role is required (cannot substitute).
           </label>
 
@@ -141,6 +162,7 @@ export function OpportunityForm({
               name="purpose"
               rows={2}
               placeholder="Why do you need this introduction?"
+              defaultValue={opportunity.purpose}
               required
             />
             {state?.fieldErrors?.purpose && (
@@ -162,6 +184,7 @@ export function OpportunityForm({
               name="requiredOutcome"
               rows={3}
               placeholder="What should the Linker actually deliver (introduction, meeting, access)?"
+              defaultValue={opportunity.required_outcome}
               required
             />
             {state?.fieldErrors?.requiredOutcome && (
@@ -173,7 +196,12 @@ export function OpportunityForm({
             <Label htmlFor="businessDescription">
               About your business <span className="text-muted-foreground">(optional)</span>
             </Label>
-            <Textarea id="businessDescription" name="businessDescription" rows={3} />
+            <Textarea
+              id="businessDescription"
+              name="businessDescription"
+              rows={3}
+              defaultValue={opportunity.business_description ?? ""}
+            />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -183,6 +211,7 @@ export function OpportunityForm({
                 id="acceptableAlternatives"
                 name="acceptableAlternatives"
                 placeholder="e.g. Any C-suite with procurement authority"
+                defaultValue={opportunity.acceptable_alternatives ?? ""}
               />
             </div>
             <div className="space-y-2">
@@ -191,7 +220,7 @@ export function OpportunityForm({
                 id="geographicPreference"
                 name="geographicPreference"
                 placeholder="e.g. MY, SG"
-                defaultValue={defaultCountry || ""}
+                defaultValue={opportunity.geographic_preference ?? ""}
               />
             </div>
           </div>
@@ -199,14 +228,19 @@ export function OpportunityForm({
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="deadline">Deadline (optional)</Label>
-              <Input id="deadline" name="deadline" type="date" />
+              <Input
+                id="deadline"
+                name="deadline"
+                type="date"
+                defaultValue={toDateInput(opportunity.deadline)}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="confidentiality">Confidentiality</Label>
               <Select
                 id="confidentiality"
                 name="confidentiality"
-                defaultValue={isRestricted ? "RESTRICTED" : "PUBLIC"}
+                defaultValue={isRestricted ? "RESTRICTED" : opportunity.confidentiality}
                 disabled={isRestricted}
                 options={[
                   { value: "PUBLIC", label: "Public" },
@@ -246,6 +280,13 @@ export function OpportunityForm({
             <p className="text-xs text-muted-foreground">
               Minimum {formatMYR(FEES.MIN_OPPORTUNITY_REWARD)} — the 10% posting
               deposit must cover the {formatMYR(FEES.LISTING_FEE)} listing fee.
+              {opportunity.status !== "DRAFT" && (
+                <>
+                  {" "}
+                  Changing the reward changes the 10% posting deposit; the difference is
+                  reconciled at posting.
+                </>
+              )}
             </p>
             {state?.fieldErrors?.offerAmount && (
               <p className="text-xs text-destructive">{state.fieldErrors.offerAmount[0]}</p>
@@ -255,7 +296,7 @@ export function OpportunityForm({
           {Number(reward) > 0 && (
             <div className="rounded-md border border-border bg-muted p-4 text-sm">
               <div className="mb-2 flex items-center gap-2 font-semibold">
-                <Coins className="h-4 w-4 text-primary" aria-hidden="true" /> Posting preview
+                <Coins className="h-4 w-4 text-primary" aria-hidden="true" /> Funding preview
               </div>
               <ul className="space-y-1 text-muted-foreground">
                 <li className="flex justify-between">
@@ -277,14 +318,6 @@ export function OpportunityForm({
                   </span>
                 </li>
               </ul>
-              <p className="mt-2 text-xs">
-                The 10% deposit is deducted from your wallet when you post — the{" "}
-                {money(funding.listingFee)} listing fee is charged{" "}
-                <strong className="text-foreground">inside</strong> that deposit, not on top
-                of it. If you cancel before a Linker is selected,{" "}
-                {money(funding.depositRefund)} is refunded and the listing fee is retained.
-                The reward is only charged later, when you accept a Linker&apos;s submission.
-              </p>
             </div>
           )}
 
@@ -296,41 +329,24 @@ export function OpportunityForm({
               id="additionalRequirements"
               name="additionalRequirements"
               rows={2}
+              defaultValue={opportunity.additional_requirements ?? ""}
             />
           </div>
         </CardContent>
       </Card>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
-          <strong>Post now</strong> charges the {Number(reward) > 0 ? money(funding.postingDeposit) : "10%"}{" "}
-          posting deposit from your wallet and makes the opportunity live. Or{" "}
-          <strong>Save as draft</strong> to publish later.
+          Changes are applied to your listing immediately.
         </p>
-        <div className="flex items-center gap-3">
-          <Button
-            type="submit"
-            name="intent"
-            value="draft"
-            variant="outline"
-            disabled={pending}
-          >
-            {pending ? (
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-            ) : (
-              <Save className="h-4 w-4" aria-hidden="true" />
-            )}
-            Save as draft
-          </Button>
-          <Button type="submit" name="intent" value="publish" disabled={pending}>
-            {pending ? (
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-            ) : (
-              <Send className="h-4 w-4" aria-hidden="true" />
-            )}
-            Post opportunity
-          </Button>
-        </div>
+        <Button type="submit" disabled={pending}>
+          {pending ? (
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <Save className="h-4 w-4" aria-hidden="true" />
+          )}
+          Save changes
+        </Button>
       </div>
     </form>
   );

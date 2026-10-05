@@ -454,6 +454,55 @@ export async function getTransactionByReference(ref: string) {
   return (data as TransactionRow | null) ?? null;
 }
 
+/**
+ * Find a transaction by the payment gateway's own reference (e.g. the
+ * ToyyibPay BillCode stored in `gateway_ref`). This is the robust lookup for
+ * payment callbacks/returns because the gateway always echoes its own bill
+ * code back, whereas the external reference (`order_id`) can be dropped.
+ */
+export async function getTransactionByGatewayRef(ref: string) {
+  const { data, error } = await sc()
+    .from("transactions")
+    .select("*")
+    .eq("gateway_ref", ref)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as TransactionRow | null) ?? null;
+}
+
+/**
+ * Resolve a top-up transaction from a payment callback/return using either the
+ * gateway bill code or the external reference (`order_id`). Prefers the bill
+ * code since it is always present; falls back to the reference for older rows
+ * created before `gateway_ref` was stored.
+ */
+export async function findPaymentTransaction(params: {
+  billCode?: string;
+  orderId?: string;
+}) {
+  if (params.billCode) {
+    const byBill = await getTransactionByGatewayRef(params.billCode);
+    if (byBill) return byBill;
+  }
+  if (params.orderId) {
+    return getTransactionByReference(params.orderId);
+  }
+  return null;
+}
+
+/** List pending top-ups (for the reconciliation job). */
+export async function getPendingTopUpTransactions() {
+  const { data, error } = await sc()
+    .from("transactions")
+    .select("*")
+    .eq("type", "WALLET_CREDIT")
+    .eq("status", "PENDING")
+    .eq("gateway", "toyyibpay")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data as TransactionRow[] | null) ?? [];
+}
+
 export async function createTransaction(values: Record<string, unknown>) {
   const { data, error } = await sc()
     .from("transactions")
@@ -487,6 +536,22 @@ export async function getProposalsByOpportunity(
     .order("created_at", { ascending: false });
   if (error) throw error;
   return data ?? [];
+}
+
+/**
+ * True when at least one Linker has submitted a proposal for the opportunity.
+ * Once a proposal exists the listing is locked for editing — a Linker has
+ * already based their proposal on the current terms.
+ */
+export async function hasProposalsForOpportunity(
+  opportunityId: string
+): Promise<boolean> {
+  const { count, error } = await sc()
+    .from("linker_proposals")
+    .select("id", { count: "exact", head: true })
+    .eq("opportunity_id", opportunityId);
+  if (error) throw error;
+  return (count ?? 0) > 0;
 }
 
 export async function getProposalsByLinker(

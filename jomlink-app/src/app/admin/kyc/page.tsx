@@ -21,12 +21,31 @@ export default async function AdminKycPage({
   const admin = await requireAdmin("kyc:read");
   const { tab = "kyc", status } = await searchParams;
 
-  const [kycRecords, relationships, biometrics, biometricStats] = await Promise.all([
+  const [kycRecords, relationships] = await Promise.all([
     listKycRecords(status ?? "ALL", 50),
     listRelationshipsForAdmin({ status: status ?? "ALL", limit: 50 }),
-    listKycBiometrics({ labelStatus: "ALL", limit: 50 }),
-    getBiometricDatasetStats(),
   ]);
+
+  // The biometric dataset is an additive feature. If the table/bucket has not
+  // been migrated yet (or PostgREST's schema cache is stale), degrade gracefully
+  // instead of taking down the whole KYC page with a 42501/PGRST error.
+  let biometrics: Awaited<ReturnType<typeof listKycBiometrics>> = [];
+  let biometricStats: Record<string, number> = {
+    UNLABELLED: 0,
+    MATCH: 0,
+    NO_MATCH: 0,
+    UNUSABLE: 0,
+  };
+  let biometricsReady = true;
+  try {
+    [biometrics, biometricStats] = await Promise.all([
+      listKycBiometrics({ labelStatus: "ALL", limit: 50 }),
+      getBiometricDatasetStats(),
+    ]);
+  } catch (e) {
+    biometricsReady = false;
+    console.error("admin/kyc: biometric dataset unavailable", e);
+  }
 
   const canWrite = admin.can("kyc:write");
   const labelledTotal =
@@ -188,6 +207,15 @@ export default async function AdminKycPage({
       ) : tab === "biometrics" ? (
         /* Biometric dataset queue (face + ID, for ML training) */
         <div className="space-y-4">
+          {!biometricsReady && (
+            <Card className="border-warning/40 bg-warning-bg">
+              <CardContent className="p-4 text-sm text-warning">
+                Biometric dataset is unavailable — the migration may not have run yet.
+                Re-run <code>supabase/jomlink-schema.sql</code> in the Supabase SQL editor,
+                then restart the Supabase container so PostgREST reloads its schema cache.
+              </CardContent>
+            </Card>
+          )}
           <Card className="border-border bg-white shadow-xs">
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-lg">
