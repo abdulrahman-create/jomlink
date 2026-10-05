@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useActionState } from "react";
-import { Loader2, MessageSquare, Send, CheckCircle2, UserCheck } from "lucide-react";
+import { Loader2, MessageSquare, Send, UserCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,7 +11,6 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   counterOfferAction,
-  acceptTermsAction,
   selectLinkerAction,
   type NegotiationState,
 } from "@/app/actions/negotiations";
@@ -49,10 +48,6 @@ export function ProposalCard({
     NegotiationState,
     FormData
   >(counterOfferAction, initialState);
-  const [acceptState, acceptAction, acceptPending] = useActionState<
-    NegotiationState,
-    FormData
-  >(acceptTermsAction, initialState);
   const [selectState, selectAction, selectPending] = useActionState<
     NegotiationState,
     FormData
@@ -60,7 +55,6 @@ export function ProposalCard({
 
   const [negotiations, setNegotiations] = React.useState<ProposalNegotiationRow[]>([]);
   const [showCounter, setShowCounter] = React.useState(false);
-  const [showAccept, setShowAccept] = React.useState(false);
 
   // Load negotiation thread on mount.
   React.useEffect(() => {
@@ -171,14 +165,6 @@ export function ProposalCard({
             >
               Counter-offer
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setShowAccept((v) => !v)}
-            >
-              Accept terms
-            </Button>
             <form action={selectAction}>
               <input type="hidden" name="proposalId" value={proposal.id} />
               <input type="hidden" name="agreedReward" value={proposal.proposed_reward} />
@@ -236,45 +222,6 @@ export function ProposalCard({
                 <Send className="h-4 w-4" aria-hidden="true" />
               )}
               Post counter-offer
-            </Button>
-          </form>
-        )}
-
-        {/* Accept terms form */}
-        {showAccept && (
-          <form action={acceptAction} className="space-y-3 rounded-md border border-border p-3">
-            <input type="hidden" name="proposalId" value={proposal.id} />
-            <div className="space-y-2">
-              <Label htmlFor={`agree-reward-${proposal.id}`}>Agreed reward (MYR)</Label>
-              <Input
-                id={`agree-reward-${proposal.id}`}
-                name="agreedReward"
-                type="number"
-                min={FEES.MIN_OPPORTUNITY_REWARD}
-                step="0.01"
-                defaultValue={proposal.proposed_reward}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor={`agree-deliv-${proposal.id}`}>Agreed deliverable</Label>
-              <Textarea
-                id={`agree-deliv-${proposal.id}`}
-                name="agreedDeliverable"
-                rows={2}
-                defaultValue={proposal.proposed_deliverable ?? ""}
-              />
-            </div>
-            {acceptState?.error && (
-              <p className="text-sm text-destructive">{acceptState.error}</p>
-            )}
-            <Button type="submit" size="sm" disabled={acceptPending}>
-              {acceptPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              ) : (
-                <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-              )}
-              Lock agreed terms
             </Button>
           </form>
         )}
