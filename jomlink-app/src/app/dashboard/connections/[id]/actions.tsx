@@ -255,6 +255,10 @@ export function ExtensionForm({ connectionId }: { connectionId: string }) {
   return (
     <form action={action} className="space-y-3 rounded-md border border-border p-3">
       <input type="hidden" name="connectionId" value={connectionId} />
+      <p className="text-xs text-muted-foreground">
+        Requesting an extension moves the escrow release date further out. It is
+        only available while the task is open.
+      </p>
       {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
       <div className="flex items-end gap-3">
         <div className="w-32 space-y-1">

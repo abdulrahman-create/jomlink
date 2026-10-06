@@ -137,6 +137,12 @@ export async function requestExtensionAction(
   if (conn.linker_id !== user.id) {
     return { error: "Only the Linker can request an extension." };
   }
+  // An extension moves the escrow release date, so it is only meaningful while
+  // the task is still open. Guarded here as well as in the UI: extending a
+  // completed connection would postpone the Linker's own payout on a closed job.
+  if (["COMPLETED", "FAILED", "DISPUTED"].includes(conn.status)) {
+    return { error: "This connection is closed — an extension cannot be requested." };
+  }
 
   try {
     const base = conn.auto_release_at ?? new Date().toISOString();

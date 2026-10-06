@@ -8,6 +8,7 @@ import {
   getAppointmentsByConnection,
   getEvidenceByConnection,
   getReviewsForSubject,
+  getReviewByAuthorAndOpportunity,
   getDisputeByConnectionId,
   getDeadlineByConnection,
   getActiveFlagByConnection,
@@ -65,15 +66,22 @@ export default async function ConnectionDetailPage({
   const isSeeker = opp.seeker_id === user.id;
   if (!isLinker && !isSeeker) redirect("/dashboard");
 
-  const [appointments, evidence, reviews, dispute, deadline, flag, reports] = await Promise.all([
-    getAppointmentsByConnection(conn.id),
-    getEvidenceByConnection(conn.id),
-    getReviewsForSubject(isSeeker ? user.id : opp.seeker_id),
-    getDisputeByConnectionId(conn.id),
-    getDeadlineByConnection(conn.id),
-    getActiveFlagByConnection(conn.id),
-    getProgressReportsByConnection(conn.id),
-  ]);
+  const counterpartyId = isSeeker ? conn.linker_id : opp.seeker_id;
+
+  const [appointments, evidence, dispute, deadline, flag, reports, myReview, theirReviews] =
+    await Promise.all([
+      getAppointmentsByConnection(conn.id),
+      getEvidenceByConnection(conn.id),
+      getDisputeByConnectionId(conn.id),
+      getDeadlineByConnection(conn.id),
+      getActiveFlagByConnection(conn.id),
+      getProgressReportsByConnection(conn.id),
+      // Reviews are one-per-(author, opportunity): `myReview` gates the form so
+      // it disappears after the member has reviewed, and `theirReviews` powers
+      // the counterparty's rating summary on this page.
+      getReviewByAuthorAndOpportunity(user.id, opp.id),
+      getReviewsForSubject(counterpartyId),
+    ]);
 
   const latestAppointment = (appointments as AppointmentRow[])[
     (appointments as AppointmentRow[]).length - 1
@@ -282,24 +290,19 @@ export default async function ConnectionDetailPage({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <p className="text-xs text-muted-foreground">
+            Evidence is kept on the record for this connection. Both parties and
+            an administrator can review it if a dispute is raised.
+          </p>
           {(evidence as ConnectionEvidenceRow[]).length === 0 ? (
             <p className="text-sm text-muted-foreground">No evidence submitted yet.</p>
           ) : (
             <ul className="space-y-2">
               {(evidence as ConnectionEvidenceRow[]).map((e) => (
                 <li key={e.id} className="rounded-md border border-border bg-muted p-3 text-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold">
-                      {e.type.replace(/_/g, " ").toLowerCase()}
-                    </span>
-                    {e.approved === null ? (
-                      <Badge variant="warning">Pending review</Badge>
-                    ) : e.approved ? (
-                      <Badge variant="success">Approved</Badge>
-                    ) : (
-                      <Badge variant="destructive">Rejected</Badge>
-                    )}
-                  </div>
+                  <span className="font-semibold">
+                    {e.type.replace(/_/g, " ").toLowerCase()}
+                  </span>
                   {e.description && <p className="mt-1 text-muted-foreground">{e.description}</p>}
                   {e.file_access_key ? (
                     <a
@@ -349,9 +352,12 @@ export default async function ConnectionDetailPage({
         </Card>
       )}
 
-      {isLinker && conn.status === "COMPLETED" && (
-        <ExtensionForm connectionId={conn.id} />
-      )}
+      {/* Extension: only while the task is still open. Requesting an extension
+          after completion would push the escrow release date on a finished job. */}
+      {isLinker &&
+        ["IN_PROGRESS", "AWAITING_VERIFICATION"].includes(conn.status) && (
+          <ExtensionForm connectionId={conn.id} />
+        )}
 
       {/* Review */}
       <Card>
@@ -359,22 +365,33 @@ export default async function ConnectionDetailPage({
           <CardTitle className="text-lg">Review</CardTitle>
         </CardHeader>
         <CardContent>
-          {(reviews as ReviewRow[]).length > 0 ? (
+          {(theirReviews as ReviewRow[]).length > 0 ? (
             <p className="mb-3 text-sm text-muted-foreground">
-              You have {reviews.length} review(s):{" "}
-              {(reviews as ReviewRow[]).reduce((s, r) => s + r.rating, 0) /
-                (reviews as ReviewRow[]).length}{" "}
+              Your counterparty has {(theirReviews as ReviewRow[]).length} review(s):{" "}
+              {(
+                (theirReviews as ReviewRow[]).reduce((s, r) => s + r.rating, 0) /
+                (theirReviews as ReviewRow[]).length
+              ).toFixed(1)}{" "}
               / 5 average.
             </p>
           ) : (
-            <p className="mb-3 text-sm text-muted-foreground">No reviews yet.</p>
+            <p className="mb-3 text-sm text-muted-foreground">
+              Your counterparty has no reviews yet.
+            </p>
           )}
-          {conn.status === "COMPLETED" && (
-            <ReviewForm
-              opportunityId={opp.id}
-              subjectId={isSeeker ? conn.linker_id : opp.seeker_id}
-            />
-          )}
+          {conn.status === "COMPLETED" &&
+            (myReview ? (
+              <p className="text-sm text-muted-foreground">
+                You reviewed this connection{" "}
+                {formatDate((myReview as ReviewRow).created_at)} — {myReview.rating} / 5.
+                One review per connection.
+              </p>
+            ) : (
+              <ReviewForm
+                opportunityId={opp.id}
+                subjectId={counterpartyId}
+              />
+            ))}
         </CardContent>
       </Card>
 

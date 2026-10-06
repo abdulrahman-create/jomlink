@@ -4,6 +4,7 @@ Phased build plan for the Jomlink business-introductions marketplace.
 
 | Document | Purpose |
 |----------|---------|
+| `PROJECT-TRACKING.md` | **Start here** — status board, outstanding migrations, gaps, conventions |
 | `00-project-plan.md` | Master plan, decisions, road map, current status |
 | `phase-01-auth.md` | DB migration + registration/login flow |
 | `phase-02-profile.md` | Member profile + relationship declarations |
@@ -14,6 +15,7 @@ Phased build plan for the Jomlink business-introductions marketplace.
 | `phase-07-admin.md` | Admin / RBAC + disputes |
 | `phase-08-dashboard.md` | Dashboard + wallet + polish |
 | `phase-09-deadline-progress.md` | Deadline setting + progress report thread + yellow flag |
+| `phase-10-notifications-nav-guards.md` | Both-party notifications, navigation fixes, evidence upload, workflow guards |
 
 ## How to use
 

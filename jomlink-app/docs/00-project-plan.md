@@ -1,7 +1,7 @@
 ﻿# 📋 Jomlink — Project Plan
 
-**Version:** 1.0 · **Status:** Planning
-**Updated:** 2026-09-24
+**Version:** 1.0 · **Status:** MVP complete + hardening
+**Updated:** 2026-10-06
 
 A marketplace for business introductions — connecting people who need access to people, organisations and opportunities with people who hold legitimate professional relationships (Linkers).
 
@@ -66,6 +66,7 @@ Browser
 | **7** | Admin / RBAC + disputes | ✅ Done |
 | **8** | Dashboard + wallet + polish | ✅ Done |
 | **9** | Deadline setting + progress report thread + yellow flag | ✅ Done |
+| **10** | Notifications + navigation + workflow guards | ✅ Done |
 
 > Each phase has its own detail page in this `docs/` folder.
 
@@ -75,6 +76,16 @@ Browser
 > edits preserved as evidence, and a missed Linker-proposed deadline raises a yellow
 > flag. It builds on Phase 6 (connection workflow) and extends Phase 7 (dispute
 > evidence of record). **Migration:** run `supabase/phase-09-deadline-progress.sql`.
+
+> **Phase 10** closes gaps found in live testing: it wires **event-driven
+> notifications** to both parties for connection, dispute, negotiation, evidence and
+> admin events (§9.14) — before this, admin rulings that released or refunded escrow
+> notified nobody; it makes the progress thread reachable in one hop from the
+> dashboard and the connections list, with honest back-links; it adds **document
+> upload** to connection evidence (private bucket + short-lived signed URLs); and it
+> adds guards so no action is offered in a state where the server would reject it
+> (§9.11 evidence of record). **Migration:** run the `connection-evidence` bucket
+> `insert` from `supabase/jomlink-schema.sql` (§ 6d).
 
 ---
 
@@ -172,6 +183,16 @@ Already built:
 - Profile basic-details editing + avatar upload (Supabase storage bucket) ✅
 - Build passes (26 routes). **MVP COMPLETE — ready for Malaysia/MYR pilot.**
 
+**Phase 10 (Notifications + Navigation + Workflow Guards):**
+- Shared notification fan-out (`src/lib/notify.ts`): `notify`, `notifyMany`, `notifyUser`, `notifyConnectionParties` — all best-effort (never roll back the triggering action) ✅
+- Event notifications for **both parties** on connection, dispute, evidence and negotiation events; admin actions (suspend/reinstate/role/moderation/KYC/relationship verdicts) notify the affected member ✅
+- Dispute raised → counterparty; status change and resolution → **both**, with per-side bodies describing what happened to each party's money ✅
+- Progress thread reachable in one hop from the dashboard rows and the connections list; no duplicate buttons; honest back-links on every connection page ✅
+- Evidence **document upload** → private `connection-evidence` bucket, `file_access_key` path, served via `GET /api/evidence/[id]` (party-gated, 60s signed URL) ✅
+- Guards: review form disappears once reviewed (server also verifies party + `COMPLETED` + counterparty); extension unavailable on a closed connection (UI + server) ✅
+- Evidence "Pending review" badge removed — it promised an approval step that no code path ever performed ✅
+- Build passes ✅
+
 ---
 
 ## 7. Next Action
@@ -179,10 +200,13 @@ Already built:
 **MVP is feature-complete.** Remaining work is production hardening:
 
 1. **Run the Phase 9 migration** (`supabase/phase-09-deadline-progress.sql`) on any existing database — the deadline/progress/flag tables are new.
-2. KYC hardening: liveness/selfie, expiry tracking, automated verification providers. (Member-facing doc upload + admin review + admin document preview are built.)
-3. Live payment gateway (ToyyibPay sandbox → production keys, webhook tunnel for callback).
-4. Fraud/risk scoring engine + advanced matching (Phase 2 marketplace intelligence). Note: repeated yellow flags (§5.6.1) are already recorded and can feed this.
-5. Business accounts, multi-country, multi-currency(architecture-ready, not built).
+2. **Create the `connection-evidence` storage bucket** — run the § 6d `insert` from `supabase/jomlink-schema.sql`, or create it in the Supabase dashboard with the same settings (private, 10 MB, jpeg/png/webp/pdf). Evidence upload fails until it exists.
+3. KYC hardening: liveness/selfie, expiry tracking, automated verification providers. (Member-facing doc upload + admin review + admin document preview are built.)
+4. Live payment gateway (ToyyibPay sandbox → production keys, webhook tunnel for callback).
+5. Fraud/risk scoring engine + advanced matching (Phase 2 marketplace intelligence). Note: repeated yellow flags (§5.6.1) are already recorded and can feed this.
+6. **Extension is still unilateral** — a Linker self-approves an extension, which also auto-clears their own yellow flag. Consider a Linker-requests / Seeker-approves pair (see `phase-10-notifications-nav-guards.md` → *Open / follow-up*).
+7. Notification delivery is **in-app only** — `notification_channel` supports EMAIL/SMS/PUSH but no worker sends them.
+8. Business accounts, multi-country, multi-currency (architecture-ready, not built).
 
 ---
 
@@ -202,3 +226,13 @@ Already built:
   - **UI:** deadline card + yellow-flag banner on `/dashboard/connections/[id]`; new `/dashboard/connections/[id]/progress` thread with per-comment "edited · N revisions kept" and an expandable **update history**.
   - **Admin:** new `/admin/disputes/[id]` — the **evidence of record** (deadline record, flag history, full progress thread with every comment's prior versions), linked from the disputes list.
   - **Lifecycle wiring:** completion counts `deadlines_met` and clears any flag; failure raises the flag and counts `deadlines_missed` + `flags_raised`; an accepted extension clears the flag. Confirmed design decisions: the flag does **not** release the reward (only a §5.13 failure does), and a Seeker rejection reopens negotiation. `npm run build` passes (31 routes).
+- **2026-10-06** — **Phase 10: notifications + navigation + workflow guards.** See `phase-10-notifications-nav-guards.md`.
+  - **Notifications (`src/lib/notify.ts`, new).** Shared fan-out: `notify`, `notifyMany`, `notifyUser`, `notifyConnectionParties` (both parties, actor excluded), `getConnectionParties`. Every helper is **best-effort** — it logs and returns rather than throwing, so a notification failure can never roll back the business action that triggered it. `notifications.type` is free-form text, so new event types need no migration.
+  - **Coverage.** Before this change `admin.ts`, `disputes.ts`, `completions.ts`, `negotiations.ts` and `evidence.ts` created **zero** notifications — an admin ruling that released or refunded escrow reached nobody. Now: admin actions (suspend/reinstate/role/moderation/KYC/relationship verdicts) notify the affected member; disputes notify the counterparty when raised and **both** parties on status change and resolution (with per-side bodies describing that party's money); connection opened/completed/extension-requested/failed notify the affected party (failure notifies **both**); evidence submission notifies the Seeker; counter-offers, accepted terms and Linker selection notify the counterparty. Notification icons extended (`ShieldCheck` for admin/verification events).
+  - **Navigation (bug, found in live testing).** From the dashboard's Active Connections card, `All` opened the connections list, but **no path reached the progress thread** — every route funnelled through the `[id]` detail page, and the list's action button only produced a progress href in the `ACCEPTED` deadline state. Fixed by computing `progressHref` independently of `nextAction`, routing dashboard rows straight to the thread when the deadline is accepted, and de-duplicating the button when the primary action already targets it. Back-links corrected: detail page now returns to the **list** (was `/dashboard`), and the progress page offers both "Back to connection" and "All connections".
+  - **Evidence document upload.** The evidence form's "File URL (optional)" text box became a real file picker (jpeg/png/webp/pdf, ≤10 MB). Uploads go to a new **private** `connection-evidence` bucket, with the object path stored on the pre-existing-but-unused `connection_evidence.file_access_key` column. Paths are timestamped + randomised per connection. New `GET /api/evidence/[id]` authorises against the connection (Linker or Seeker only) and 302-redirects to a **60-second signed URL**. Validation runs before any network call, and a zero-byte `File` is treated as "no file chosen". **Migration:** the bucket is declared in `jomlink-schema.sql` § 6d — run that `insert` or create the bucket manually.
+  - **Guards.**
+    - *Extension after completion (bug).* The form was gated on `conn.status === "COMPLETED"` — the inverse of the intent — and the action had no status check, so it added days to `auto_release_at` (the escrow release timer!) on a **finished** job, set `release_status = "EXTENDED"`, and cleared the missed-commitment flag. Now gated to `IN_PROGRESS` / `AWAITING_VERIFICATION` in the UI and rejects `COMPLETED` / `FAILED` / `DISPUTED` in the action. *Not* caused by closing early.
+    - *Repeated reviews (bug).* The server rejected duplicates but the UI never checked, so the form stayed visible forever; the summary line also loaded the **Seeker's own** reviews instead of the counterparty's. The page now loads `myReview` and swaps the form for a confirmation; the summary shows the counterparty's reviews; and `submitReviewAction` verifies the reviewer is a party to a `COMPLETED` connection whose `subjectId` is genuinely the counterparty (previously a crafted POST could rate any member).
+    - *Evidence "Pending review" badge (bug).* `connection_evidence.approved` defaults to `null` and **no code path ever set it** — there is no `evidence:*` permission and no admin evidence queue, so every item showed "Pending review" permanently. Per the §9.11 evidence-of-record principle the badge was **removed** and replaced with a one-line explanation; the column was left in place (always-`null` is harmless; dropping it would be a destructive migration).
+  - **Latent bug surfaced by the type-checker:** `updateDisputeStatusAction` referenced the dispute without ever loading it — the missing lookup was added. `npm run build` passes.

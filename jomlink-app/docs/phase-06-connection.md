@@ -44,6 +44,8 @@
 - [x] `npm run build` passes
 - [x] Appointment can be proposed + acknowledged/rejected by Seeker
 - [x] Evidence can be submitted and marked (simple) complete
+- [x] Evidence supports a document attachment (private bucket, signed-URL access)
+- [x] Both parties are notified of connection events from the counterparty **or** an admin
 - [x] Completion releases the escrow payout (via Phase 5)
 - [x] Members can rate/review each other post-completion
 - [x] Reputation metrics update correctly
@@ -60,12 +62,14 @@
 - `src/app/actions/appointments.ts`
 - `src/app/actions/deadlines.ts` — deadline request / accept / reject + flag raising
 - `src/app/actions/progress-reports.ts` — reports, comments, edits
-- `src/app/actions/evidence.ts`
+- `src/app/actions/evidence.ts` — evidence submission (**now with document upload**)
 - `src/app/actions/completions.ts`
 - `src/app/actions/reviews.ts`
 - `src/app/actions/extensions.ts`
 - `src/lib/reputation.ts`
 - `src/lib/flags.ts` — yellow-flag raise/clear helpers
+- `src/lib/notify.ts` — notification fan-out (added Phase 10)
+- `src/app/api/evidence/[id]/route.ts` — signed-URL viewer for private evidence (added Phase 10)
 
 ---
 
@@ -108,3 +112,40 @@
 - Either party **may edit their own comment**, but **every edit preserves the previous version as update history**, visible to both parties and to admin.
 - Nothing in the thread is ever destroyed — it is the platform's **evidence of record** for later disputes (§9.11.1).
 - Extension requests are raised **through the thread** so the reason and both positions are captured.
+
+### Evidence (§5.6, §9.11)
+
+- Evidence is a **record, not a moderation queue.** There is no approval step: an
+  item is never "pending review". Both parties and an admin can read it — the admin
+  when adjudicating a dispute — but nothing sets a verdict on it. (The
+  `connection_evidence.approved` column exists but is always `null`; the badge that
+  implied otherwise was removed in Phase 10.)
+- A Linker may attach a **document** (jpeg/png/webp/pdf, ≤10 MB) to an evidence item.
+  Files go to the **private** `connection-evidence` bucket and are addressed by
+  object path (`file_access_key`); they are served only through
+  `GET /api/evidence/[id]`, which checks the caller is a party to the connection and
+  redirects to a **60-second signed URL**. A public URL is never stored.
+- A legacy external `file_url` may still be attached.
+
+### Lifecycle guards (§5.6, §5.13)
+
+- **Reviews are one per (author, opportunity)** and are only valid on a `COMPLETED`
+  connection, by one of its two parties, about the **counterparty**. The form
+  disappears once the member has reviewed, and the server enforces all three rules.
+- **Extensions are only available while the task is open**
+  (`IN_PROGRESS` / `AWAITING_VERIFICATION`). They are rejected on a closed connection:
+  `auto_release_at` **is** the escrow release timer, so extending a finished job would
+  delay the Linker's own payout and erroneously clear their yellow flag.
+  *Note: the extension is currently unilateral — the Linker self-approves.*
+
+### Notifications (§9.14)
+
+- Both parties to a connection are notified of every material event on it, whether it
+  originates from the counterparty **or from an administrator** (suspension, role
+  change, opportunity moderation, KYC/relationship verdict, dispute ruling).
+- Dispute resolution notifies **both** parties with a body tailored per side, because
+  the same outcome means opposite things to a Seeker (refund) and a Linker (payout).
+- Notifications are **best-effort**: a delivery failure never rolls back the business
+  action that triggered it.
+- Delivery is **in-app only** (`notification_channel` supports EMAIL/SMS/PUSH, but no
+  worker sends them).

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import {
-  getConnectionById,
+  getConnectionByOpportunity,
   getOpportunityById,
   getReviewByAuthorAndOpportunity,
   createReview,
@@ -50,10 +50,34 @@ export async function submitReviewAction(
     return { error: "You cannot review yourself." };
   }
 
-  // Ensure the reviewer participated in the (completed) connection.
+  // A review is only valid for a COMPLETED connection, and only by one of its
+  // two parties. Without this the form (or a direct POST) could rate anyone.
+  const conn = await getConnectionByOpportunity(opportunityId);
+  if (!conn) {
+    return { error: "Connection not found." };
+  }
+  const opp = await getOpportunityById(opportunityId);
+  if (!opp) {
+    return { error: "Opportunity not found." };
+  }
+  const isLinker = conn.linker_id === user.id;
+  const isSeeker = opp.seeker_id === user.id;
+  if (!isLinker && !isSeeker) {
+    return { error: "You are not part of this connection." };
+  }
+  if (conn.status !== "COMPLETED") {
+    return { error: "You can only review a completed connection." };
+  }
+  // The subject must be the counterparty — never an arbitrary member.
+  const counterpartyId = isLinker ? opp.seeker_id : conn.linker_id;
+  if (subjectId !== counterpartyId) {
+    return { error: "You can only review your counterparty on this connection." };
+  }
+
+  // One review per (author, opportunity).
   const existing = await getReviewByAuthorAndOpportunity(user.id, opportunityId);
   if (existing) {
-    return { error: "You have already reviewed this opportunity." };
+    return { error: "You have already reviewed this connection." };
   }
 
   try {
