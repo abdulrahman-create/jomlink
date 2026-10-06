@@ -4,6 +4,7 @@ import {
   Bell,
   BellRing,
   CheckCheck,
+  ChevronRight,
   Handshake,
   Info,
   Scale,
@@ -11,14 +12,19 @@ import {
   Wallet,
 } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
+import { getCurrentAdmin } from "@/lib/rbac";
 import { getNotificationsByUser } from "@/lib/queries";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/constants";
 import {
-  markNotificationReadAction,
+  resolveNotificationHref,
+  toViewerRole,
+} from "@/lib/notification-links";
+import {
   markAllNotificationsReadAction,
+  openNotificationAction,
 } from "@/app/actions/notifications";
 import type { NotificationRow } from "@/lib/jomlink-types";
 
@@ -50,6 +56,11 @@ export default async function NotificationsPage() {
 
   const notifications = await getNotificationsByUser(user.id);
   const unread = notifications.filter((n: NotificationRow) => !n.read);
+
+  // Deep links are role-relative (a Linker and a Seeker reach the same proposal
+  // through different pages), so resolve the viewer's role once here.
+  const admin = await getCurrentAdmin();
+  const role = toViewerRole(user.role, !!admin);
 
   return (
     <div className="space-y-6">
@@ -83,10 +94,19 @@ export default async function NotificationsPage() {
         <div className="space-y-3">
           {notifications.map((n: NotificationRow) => {
             const { Icon, tone } = iconForType(n.type);
-            return (
+            const href = resolveNotificationHref(n, role);
+
+            const card = (
               <Card
-                key={n.id}
-                className={n.read ? undefined : "border-primary/30 bg-primary-soft/30"}
+                className={
+                  n.read
+                    ? href
+                      ? "transition-colors group-hover:border-primary/40"
+                      : undefined
+                    : href
+                      ? "border-primary/30 bg-primary-soft/30 transition-colors group-hover:border-primary/50"
+                      : "border-primary/30 bg-primary-soft/30"
+                }
               >
                 <CardContent className="flex items-start gap-4 p-5">
                   <span className="mt-0.5 shrink-0">
@@ -108,16 +128,43 @@ export default async function NotificationsPage() {
                       {formatDate(n.created_at)}
                     </p>
                   </div>
-                  {!n.read && (
-                    <form action={markNotificationReadAction} className="shrink-0">
-                      <input type="hidden" name="notificationId" value={n.id} />
-                      <Button type="submit" variant="ghost" size="sm">
-                        Mark read
-                      </Button>
-                    </form>
+                  {(href || !n.read) && (
+                    <div className="flex shrink-0 items-center gap-1">
+                      {!n.read && (
+                        <span
+                          role="button"
+                          tabIndex={-1}
+                          aria-hidden="true"
+                          className="pointer-events-none inline-flex h-8 items-center rounded-md px-3 text-xs font-medium text-muted-foreground"
+                        >
+                          Mark read
+                        </span>
+                      )}
+                      {href && (
+                        <ChevronRight
+                          className="h-4 w-4 text-muted-foreground"
+                          aria-hidden="true"
+                        />
+                      )}
+                    </div>
                   )}
                 </CardContent>
               </Card>
+            );
+
+            // Notifications that point somewhere become a single form: the click
+            // marks the row read *and* navigates, so the badge never survives the
+            // visit. Rows with no destination stay inert.
+            return href ? (
+              <form key={n.id} action={openNotificationAction} className="group block">
+                <input type="hidden" name="notificationId" value={n.id} />
+                <input type="hidden" name="href" value={href} />
+                <button type="submit" className="w-full text-left">
+                  {card}
+                </button>
+              </form>
+            ) : (
+              <div key={n.id}>{card}</div>
             );
           })}
         </div>

@@ -5,11 +5,13 @@ import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import {
   getOpportunityById,
+  getProposalById,
   getProposalByLinkerAndOpportunity,
   createProposal,
   updateProposalIfOwned,
 } from "@/lib/queries";
 import { FEES, formatMYR } from "@/lib/constants";
+import { notifyUser } from "@/lib/notify";
 
 // ── Validation ──────────────────────────────────────────────
 // The agreed reward must stay at or above the platform floor so the 10%
@@ -114,6 +116,16 @@ export async function submitProposalAction(
     const proposal = existing
       ? await updateProposalIfOwned(existing.id, user.id, values)
       : await createProposal(values);
+
+    await notifyUser(opp.seeker_id, null, {
+      type: existing ? "PROPOSAL_RESUBMITTED" : "PROPOSAL_SUBMITTED",
+      title: existing
+        ? "A Linker resubmitted their proposal"
+        : "New proposal received",
+      body: `${d.proposedDeliverable.slice(0, 120)} — ${formatMYR(d.proposedReward)}`,
+      data: { opportunityId: opp.id, proposalId: proposal?.id },
+    });
+
     revalidatePath("/opportunities/" + opp.id);
     revalidatePath("/dashboard/proposals");
     return { success: true, proposalId: proposal?.id };
@@ -132,8 +144,20 @@ export async function withdrawProposalAction(
   if (!user) return { error: "Not authenticated." };
 
   const proposalId = String(formData.get("id") || "");
+  const proposal = proposalId ? await getProposalById(proposalId) : null;
+  if (!proposal) return { error: "Proposal not found." };
+
   try {
     await updateProposalIfOwned(proposalId, user.id, { status: "WITHDRAWN" });
+
+    const opp = await getOpportunityById(proposal.opportunity_id);
+    await notifyUser(opp?.seeker_id, null, {
+      type: "PROPOSAL_WITHDRAWN",
+      title: "A Linker withdrew their proposal",
+      body: `The proposal for "${opp?.title ?? "your opportunity"}" is no longer active.`,
+      data: { opportunityId: proposal.opportunity_id, proposalId },
+    });
+
     revalidatePath("/dashboard/proposals");
     return { success: true };
   } catch (e: unknown) {

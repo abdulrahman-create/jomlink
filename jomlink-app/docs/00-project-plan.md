@@ -26,7 +26,7 @@ We build **phase by phase**, validating each phase before moving on. This plan d
 | Styling | Tailwind CSS v4 + design tokens | Jomlink brand (carmine/cotton-candy) |
 | Data layer | supabase-js 2 (service-role) → `jomlink` schema | Replaced Prisma at runtime; legacy Prisma artifacts kept as reference only |
 | Database | Supabase PostgreSQL (isolated `jomlink` schema) | NOT `public` — avoids collision with other apps in same Supabase |
-| Schema isolation | `PGRST_DB_SCHEMAS` exposes `jomlink` | `.schema('jomlink').from('table')` pattern |
+| Schema isolation | `db: { schema: 'jomlink' }` at `createClient` | Headers are derived at construction; per-call `.schema()` is silently dropped |
 | Auth | Supabase Auth (self-hosted) | Anon key public; SERVICE_ROLE server-only; users tagged `app='jomlink'` to avoid conflicts |
 | Auth isolation | `app='jomlink'` tag check | `getCurrentUser()` only matches/link Jomlink-tagged users |
 | Payments | Sandbox/stubbed gateway (planned) | 10% refundable posting deposit (wallet auto-deduct, less RM10 listing fee on pre-selection cancel), full reward settlement at Linker acceptance, escrow, 10% linker fee, 7-day auto-release |
@@ -40,7 +40,7 @@ We build **phase by phase**, validating each phase before moving on. This plan d
 Browser
   → Next.js App (React Server Components + Client components)
       → Server Actions / Route Handlers (business logic)
-          → supabase-js service-role client → schema('jomlink') → Supabase Postgres
+          → supabase-js service-role client (db.schema = 'jomlink') → Supabase Postgres
           → Supabase Auth        ── identity / sessions (tagged app='jomlink')
 ```
 
@@ -67,6 +67,7 @@ Browser
 | **8** | Dashboard + wallet + polish | ✅ Done |
 | **9** | Deadline setting + progress report thread + yellow flag | ✅ Done |
 | **10** | Notifications + navigation + workflow guards | ✅ Done |
+| **11** | Match score + relationship save + schema routing | ✅ Done |
 
 > Each phase has its own detail page in this `docs/` folder.
 
@@ -86,6 +87,30 @@ Browser
 > adds guards so no action is offered in a state where the server would reject it
 > (§9.11 evidence of record). **Migration:** run the `connection-evidence` bucket
 > `insert` from `supabase/jomlink-schema.sql` (§ 6d).
+
+> **Phase 11** fixes two data-layer bugs and rewrites the match score. The
+> `jomlink` schema was being requested **after** client construction, which
+> supabase-js silently drops — so **every query resolved against `public`** and
+> failed with `PGRST205`; the relationship form is simply where it was noticed.
+> A phantom `app` column on the relationship insert was a second, independent
+> failure. The match score's heaviest signal had never fired (an enum compared
+> against free-text industry), restricted categories carried no penalty, entity
+> matching missed common name variants, and the Seeker — the party choosing a
+> Linker — could not see the score at all. **No migration required**; the
+> database was already correct.
+
+> **Phase 12** centralises the lifecycle state machine and fixes two money-path
+> defects. The rule *"is this still open?"* had been re-written in **nine places
+> across four rules** and had drifted in each: a `COMPLETED` project still offered
+> *Select* and *Counter-offer*; a closed connection still accepted evidence and new
+> appointments; escrow committed the Linker's **opening ask** rather than the
+> negotiated amount (RM2,200 charged on an RM1,500 opportunity); and
+> `acceptTermsAction` had **no wallet check at all**, so a Seeker holding RM1,030
+> could accept RM2,100 terms and flip a proposal to `ACCEPTED` with no escrow and
+> no funds behind it. Proposal submission notified nobody, notifications were not
+> clickable, and the Linker had no UI to answer a counter-offer. All status rules
+> now live in `src/lib/status.ts`. **No migration required.** ⚠️ One stale-escrow
+> row is left for manual resolution — see the phase doc.
 
 ---
 
@@ -199,14 +224,20 @@ Already built:
 
 **MVP is feature-complete.** Remaining work is production hardening:
 
-1. **Run the Phase 9 migration** (`supabase/phase-09-deadline-progress.sql`) on any existing database — the deadline/progress/flag tables are new.
-2. **Create the `connection-evidence` storage bucket** — run the § 6d `insert` from `supabase/jomlink-schema.sql`, or create it in the Supabase dashboard with the same settings (private, 10 MB, jpeg/png/webp/pdf). Evidence upload fails until it exists.
-3. KYC hardening: liveness/selfie, expiry tracking, automated verification providers. (Member-facing doc upload + admin review + admin document preview are built.)
-4. Live payment gateway (ToyyibPay sandbox → production keys, webhook tunnel for callback).
+1. **Verify the `connection-evidence` storage bucket exists** — run the § 6d `insert` from `supabase/jomlink-schema.sql`, or create it in the Supabase dashboard with the same settings (private, 10 MB, jpeg/png/webp/pdf). Evidence upload fails until it exists. *(The Phase 9 migration is confirmed already applied — those tables are reachable on the live database.)*
+2. KYC hardening: liveness/selfie, expiry tracking, automated verification providers. (Member-facing doc upload + admin review + admin document preview are built.)
+3. Live payment gateway (ToyyibPay sandbox → production keys, webhook tunnel for callback).
+4. **Relationship verification** — the match score trusts self-declared relationships, so a member can claim any relationship and collect up to 26 points. `relationship_verifications` exists in `prisma/schema.prisma` for exactly this and has **no table** in the live database. Decide whether to build it. *(Phase 11 open item 4.)*
 5. Fraud/risk scoring engine + advanced matching (Phase 2 marketplace intelligence). Note: repeated yellow flags (§5.6.1) are already recorded and can feed this.
 6. **Extension is still unilateral** — a Linker self-approves an extension, which also auto-clears their own yellow flag. Consider a Linker-requests / Seeker-approves pair (see `phase-10-notifications-nav-guards.md` → *Open / follow-up*).
 7. Notification delivery is **in-app only** — `notification_channel` supports EMAIL/SMS/PUSH but no worker sends them.
-8. Business accounts, multi-country, multi-currency (architecture-ready, not built).
+8. **Decide whether match score should persist or influence ordering** — it is currently computed per-request, stored nowhere (`opportunities.match_score` is reserved and always `NULL`), and the Seeker's badge is informational only. Persisting it needs cache invalidation whenever a Linker edits their profile or relationships. *(Phase 11 open item 1–2.)*
+9. Business accounts, multi-country, multi-currency (architecture-ready, not built).
+
+> **Reconcile Prisma and Supabase.** `prisma/schema.prisma` lists
+> `relationship_verifications` and `membership`, neither of which exists in the
+> live database or in `supabase/jomlink-schema.sql`, and neither is used by
+> `src/`. Prisma is legacy reference only — the runtime data path is Supabase.
 
 ---
 
@@ -236,3 +267,21 @@ Already built:
     - *Repeated reviews (bug).* The server rejected duplicates but the UI never checked, so the form stayed visible forever; the summary line also loaded the **Seeker's own** reviews instead of the counterparty's. The page now loads `myReview` and swaps the form for a confirmation; the summary shows the counterparty's reviews; and `submitReviewAction` verifies the reviewer is a party to a `COMPLETED` connection whose `subjectId` is genuinely the counterparty (previously a crafted POST could rate any member).
     - *Evidence "Pending review" badge (bug).* `connection_evidence.approved` defaults to `null` and **no code path ever set it** — there is no `evidence:*` permission and no admin evidence queue, so every item showed "Pending review" permanently. Per the §9.11 evidence-of-record principle the badge was **removed** and replaced with a one-line explanation; the column was left in place (always-`null` is harmless; dropping it would be a destructive migration).
   - **Latent bug surfaced by the type-checker:** `updateDisputeStatusAction` referenced the dispute without ever loading it — the missing lookup was added. `npm run build` passes.
+- **2026-10-06** — **Phase 11: match score + relationship save + schema routing.** See `phase-11-match-score-and-data-layer.md`. **No migration required.**
+  - **Relationship form would not save (bug, found in live testing).** Reported as *"linker > relationship. i cant save this form."* Two independent causes, both confirmed by probing the live Supabase instance. **(a)** `src/lib/supabase/admin.ts` built the client with no `db.schema` and then called `.schema("jomlink")` per request — but supabase-js derives its `Accept-Profile` header inside `createClient`, and calling `.schema()` on a built client returns a **new** client whose REST headers are dropped. Requests went out with no schema header, so PostgREST answered from `public` where no Jomlink table lives → `404 PGRST205`. **This was not relationship-specific — it broke every query in the data layer.** Fixed by setting `db: { schema: "jomlink" }` at construction and removing the six now-redundant `.schema()` calls. **(b)** `createRelationship()` inserted `app: JOMLINK_APP_TAG`, a column that exists **only on `users`** → `400 42703`. Removed. Verified live: 28 of 30 tables reachable, and a real end-to-end insert against an existing member succeeded.
+  - **Match score rewrite.** Four defects, the worst of which was silent: category relevance compared the **enum** (`"BUSINESS_INTRODUCTION"`) against free-text `industry` (`"Finance"`) — values that can never substring-match — and its `labels` table covered only 4 of 11 categories, so **the heaviest signal had never once fired** and every member received the 8/20 fallback while the UI showed a confident band label. Also: `is_restricted_category` was accepted as input and never read; entity matching missed common variants (`"Bhd"`, `"Sdn"`, plurals, orgs held via `organisation_id`), so real relationships scored zero; and `current_organisation` could pay out twice for the same employer. Rewrote with an 11-category `CATEGORY_KEYWORDS` map matching industry **prose**, `entityNamesMatch()` (punctuation/plural/legal-suffix normalisation, all-tokens-must-match), employment precedence over `current_organisation`, `target_role_exact` enforcement, a city fallback for geography, a −10 restricted penalty, and an exported `MATCH_WEIGHTS` so the docstring can no longer drift from the code (it claimed "Reputation → up to 10" when the code paid at most 8).
+  - **The Seeker can now see the score (gap).** It was computed only for a logged-in non-owner — i.e. the Linker. The party actually choosing between Linkers saw nothing. `getProposalsWithLinker()` now embeds `member_profiles`, `employment_history` and `relationships`; the proposals page scores each proposal via new shared helpers (`buildMatchInput`, `matchOpportunityFields`) so both sides score **identically** from one code path; the proposal card shows a match badge plus a plain-language reason ("1st-degree relationship to the target entity").
+  - **`match_score` column documented as reserved.** It is defined in the schema but **no code writes it** — the score is computed per-request because it depends on which Linker is viewing. Comment added; persisting it remains an open item.
+  - **Verification.** 36 assertions across 12 scorer scenarios (entity-name edge cases, every category, all three degrees, employment precedence, exact-role gating, restricted penalty, cap/floor, null-safety) via a temporary harness built on the esbuild bundled with Next — **deleted after the run**; the repo still has no test runner. `npm run build` and `npx tsc --noEmit` both pass. Two lint findings in touched files are pre-existing and were confirmed as such by stashing the changes and re-running.
+- **2026-10-06** — **Phase 12: lifecycle guards + notification deep-links + money path.** See `phase-12-lifecycle-guards-and-money-path.md`. **No migration required.**
+  - **State machine centralised (root cause of most of this phase).** The *"can this still be negotiated?"* rule existed inline in **five** places that disagreed — `negotiations.ts` (correct), `proposal-card.tsx` (missing `SELECTED`), the new `negotiation-panel.tsx` (missing `SELECTED`), and `acceptTermsAction` (no check at all). The server action was right and the **UI** was wrong, so a `SELECTED` project — escrow committed, terms locked — still rendered *Counter-offer* and *Accept*. Compounding it: **completing a connection does not rewrite its proposal rows**, so a proposal can read `Selected`/`Under review` on an opportunity that is already `COMPLETED`. `src/lib/status.ts` now owns `isProposalNegotiable` / `isProposalSelectable` / `isConnectionOpen` / `isOpportunitySelectable` / `isOpportunityTerminal`, and all nine call sites delegate to it. Surfaces gate on **both** the proposal's and the opportunity's status.
+  - **Escrow committed the wrong amount (bug, money).** The *Select this Linker* form submitted `proposal.proposed_reward` — the Linker's **opening ask** — ignoring negotiation, while the helper text beside it showed the negotiated figure. On live data all three disagreed: thread RM2,100, helper text RM2,100, **submitted RM2,200**. Confirmed it had fired in production — the wallet holds `Reward escrow −RM2,200.00` for an opportunity whose reward is **RM1,500**. Now commits `agreed_reward ?? last counter-offer ?? proposed_reward`, and the charged figure and displayed figure derive from one source.
+  - **`acceptTermsAction` had no affordability check (bug, money).** It enforced only the RM100 reward floor. A Seeker with **RM1,030** could accept **RM2,100** terms: the proposal flipped to `ACCEPTED` and `agreed_reward` was written with **no escrow and no transaction** — a commitment with nothing behind it. Two paths both say "accept" but only `selectLinkerAction` checked funds. Now the Seeker's balance is verified server-side before writing (the Linker is exempt — they are paid, not charged). The proposals page also loads the balance so **Select and Accept are disabled up front**, stating the gap and linking to top-up, instead of letting the member click into a rejection.
+  - **Missing connection-status guards.** The *"is this connection closed?"* rule had six copies; `evidence.ts` and `appointments.ts` had **none**. A `COMPLETED` connection rendered a live *Submit evidence* form directly beneath *"The thread has ended"*, and submissions succeeded and notified the Seeker; new appointments could also be proposed on a finished job. Both now call `isConnectionOpen`, and the forms are replaced with a closed-state explanation.
+  - **Seeker's connections list was always empty (bug).** `/dashboard/connections` called only `getConnectionsByUser()`, which filters `.eq("linker_id", userId)` — a Seeker is never the `linker_id`, so they saw *"No connections yet. They appear once a Seeker selects your proposal"* while owning a completed connection whose detail page worked. A `getConnectionsForSeeker()` query already existed but was unused by that page. The page now fetches both sides and de-duplicates; the empty-state copy is role-aware.
+  - **Proposal submission notified nobody (bug).** `submitProposalAction` called `revalidatePath` — which only invalidates Next.js's cache — and never wrote a notification. It was the sole outlier among eight comparable actions, despite `lib/notify.ts` documenting the both-parties rule. Added `PROPOSAL_SUBMITTED` / `PROPOSAL_RESUBMITTED` / `PROPOSAL_WITHDRAWN` (withdrawal was silent too).
+  - **Notifications were not clickable (gap).** Rows were static markup with a "Mark read" button; the `data` payload already carried `connectionId` / `opportunityId` / `proposalId` / `disputeId` and nothing read it. New `src/lib/notification-links.ts` maps all 24 types to **role-relative** destinations (the same proposal is reached via `/dashboard/proposals` for a Linker and `/opportunities/[id]/proposals` for a Seeker). Clicking marks read **and** navigates, via `openNotificationAction`, which validates the target is a same-origin relative path — otherwise the client-supplied href would be an open redirect.
+  - **Linker had no negotiation UI (bug).** The counter-offer form existed only in `proposal-card.tsx`, rendered under the **Seeker's** page; the Linker's `/dashboard/proposals` was read-only. A Seeker could counter, the Linker was notified, and there was no means to respond. Extracted `src/components/negotiation-panel.tsx` and rendered it on both surfaces. Added `canAccept` so you can no longer accept your own standing offer, and corrected thread copy that promised an Accept action the author does not have.
+  - **Negotiations API was unauthorized.** `GET /api/proposals/[id]/negotiations` was readable by id alone — its own comment admitted it. The thread carries offered rewards and free-text messages. Now 401/403/404 as appropriate; this became **required** by the Linker-UI change, since that list fetches the endpoint.
+  - **Data repaired during the session (with explicit approval).** Proposal `7bb3dcbc…` was flipped to `ACCEPTED` by the missing-affordability bug and reverted to `UNDER_REVIEW` with its agreed fields cleared; the single test counter-offer row was deleted. **Left unresolved:** the stale **RM2,200 escrow on an RM1,500 opportunity** — a live financial commitment on a `COMPLETED` connection that needs a product decision.
+  - **Verification.** `tsc`, `eslint` and `npm run build` (31/31 pages) all clean; behaviour checked in the browser on both accounts. **Not verified:** the `BOTH`-role de-duplication path in the connections list (no such test account was used) — reasoned, not exercised. A **test suite was then added** (`vitest`, `npm test`) covering the `status.ts` predicates and `notification-links.ts` — 39 tests, and confirmed to fail when the SELECTED rule is reverted. Coverage is pure logic only: nothing yet exercises actions, the database, or a request context.

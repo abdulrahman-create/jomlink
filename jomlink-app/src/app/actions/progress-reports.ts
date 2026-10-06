@@ -15,6 +15,7 @@ import {
   getProgressReportById,
   updateProgressComment,
 } from "@/lib/queries";
+import { CONNECTION_CLOSED_STATUSES } from "@/lib/status";
 
 export type ProgressState = {
   error?: string;
@@ -41,8 +42,11 @@ const EditSchema = z.object({
  * Statuses in which the thread is closed. The progress report thread runs
  * "until the deadline ends" (§5.6.2), so once the Opportunity is finished the
  * record becomes read-only evidence.
+ *
+ * Sourced from the shared connection state machine in `lib/status.ts` — this
+ * file previously carried its own copy of the list.
  */
-const CLOSED_STATES = ["COMPLETED", "FAILED", "DISPUTED"];
+const CLOSED_STATES = CONNECTION_CLOSED_STATUSES as readonly string[];
 
 /**
  * Is the progress report thread currently open for this connection?

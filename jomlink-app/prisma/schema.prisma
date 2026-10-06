@@ -408,7 +408,11 @@ model opportunities {
   fundedAmount        Decimal?               @db.Decimal(12, 2)
   isRestrictedCategory Boolean               @default(false)
   // Matching
-  matchScore          Int?                   // 0-100 calculated indicator
+  // NOTE: not persisted. The 0-100 score is computed per-request by
+  // computeMatchScore() in src/lib/matching.ts, because it depends on which
+  // Linker is viewing the opportunity. This column is reserved for a future
+  // denormalised/cached score and is currently always NULL.
+  matchScore          Int?
   expiresAt           DateTime?
 
   created_at          DateTime               @default(now())

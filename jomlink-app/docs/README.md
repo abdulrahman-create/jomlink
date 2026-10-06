@@ -16,6 +16,8 @@ Phased build plan for the Jomlink business-introductions marketplace.
 | `phase-08-dashboard.md` | Dashboard + wallet + polish |
 | `phase-09-deadline-progress.md` | Deadline setting + progress report thread + yellow flag |
 | `phase-10-notifications-nav-guards.md` | Both-party notifications, navigation fixes, evidence upload, workflow guards |
+| `phase-11-match-score-and-data-layer.md` | Match score rewrite, relationship save fix, `jomlink` schema routing |
+| `phase-12-lifecycle-guards-and-money-path.md` | Centralised lifecycle state machine, notification deep-links, Linker negotiation UI, escrow/affordability fixes |
 
 ## How to use
 

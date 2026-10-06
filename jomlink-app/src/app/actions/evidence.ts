@@ -10,6 +10,7 @@ import {
   createEvidence,
 } from "@/lib/queries";
 import { notifyUser } from "@/lib/notify";
+import { isConnectionOpen } from "@/lib/status";
 
 // ── Storage ─────────────────────────────────────────────────
 // Private bucket; objects are addressed by path only (never a public URL) and
@@ -75,6 +76,15 @@ export async function submitEvidenceAction(
   if (!conn) return { error: "Connection not found." };
   if (conn.linker_id !== user.id) {
     return { error: "Only the Linker can submit evidence." };
+  }
+  // A completed/failed/disputed connection is a closed record — it is the
+  // evidence base for escrow release or an admin ruling, so no new evidence may
+  // be added to it. Withdrawals and the dispute flow remain available.
+  if (!isConnectionOpen(conn.status)) {
+    return {
+      error:
+        "This connection is closed, so no further evidence can be submitted.",
+    };
   }
 
   const parsed = EvidenceSchema.safeParse({

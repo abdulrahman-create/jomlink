@@ -11,6 +11,7 @@ import {
   updateAppointment,
   updateConnection,
 } from "@/lib/queries";
+import { isConnectionOpen } from "@/lib/status";
 
 const AppointmentSchema = z.object({
   date: z.coerce.date(),
@@ -39,6 +40,13 @@ export async function proposeAppointmentAction(
   if (!conn) return { error: "Connection not found." };
   if (conn.linker_id !== user.id) {
     return { error: "Only the Linker can propose an appointment." };
+  }
+  // A closed connection must not accept a new appointment proposal; the schedule
+  // is part of the record that escrow release and any dispute ruling rest on.
+  if (!isConnectionOpen(conn.status)) {
+    return {
+      error: "This connection is closed, so no new appointment can be proposed.",
+    };
   }
 
   const parsed = AppointmentSchema.safeParse({

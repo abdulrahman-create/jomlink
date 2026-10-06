@@ -17,6 +17,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/constants";
+import { isConnectionOpen } from "@/lib/status";
 import type { AppointmentRow, ConnectionEvidenceRow, ReviewRow, OpportunityDeadlineRow, LinkerFlagRow, ProgressReportRow } from "@/lib/jomlink-types";
 import {
   ProposeAppointment,
@@ -273,7 +274,13 @@ export default async function ConnectionDetailPage({
                 )}
             </div>
           ) : isLinker ? (
-            <ProposeAppointment connectionId={conn.id} withError={conn.status === "PENDING_ACKNOWLEDGEMENT"} />
+            isConnectionOpen(conn.status) ? (
+              <ProposeAppointment connectionId={conn.id} withError={conn.status === "PENDING_ACKNOWLEDGEMENT"} />
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                This connection is closed, so the schedule is final.
+              </p>
+            )
           ) : (
             <p className="text-sm text-muted-foreground">
               The Linker will propose an appointment.
@@ -329,7 +336,14 @@ export default async function ConnectionDetailPage({
               ))}
             </ul>
           )}
-          {isLinker && <SubmitEvidence connectionId={conn.id} />}
+          {isLinker && isConnectionOpen(conn.status) && (
+            <SubmitEvidence connectionId={conn.id} />
+          )}
+          {isLinker && !isConnectionOpen(conn.status) && (
+            <p className="text-sm text-muted-foreground">
+              This connection is closed, so the evidence record is final.
+            </p>
+          )}
         </CardContent>
       </Card>
 

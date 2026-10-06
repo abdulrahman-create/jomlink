@@ -4,6 +4,7 @@ import { Handshake, MessageSquare, Flag, History } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
 import {
   getConnectionsByUser,
+  getConnectionsForSeeker,
   getDeadlineByConnection,
   getActiveFlagByConnection,
   getProgressReportsByConnection,
@@ -100,7 +101,29 @@ export default async function ConnectionsPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const connections = await getConnectionsByUser(user.id);
+  // A member can be on either side of a connection: the Linker who delivers it
+  // or the Seeker whose opportunity it is. `getConnectionsByUser` only matches
+  // `linker_id`, so calling it alone left every Seeker with an empty list even
+  // though their connection detail pages worked. Fetch both sides and merge.
+  const isSeeker =
+    user.role === "SEEKER" || user.role === "BOTH" || user.role === "ADMIN";
+  const isLinker =
+    user.role === "LINKER" || user.role === "BOTH" || user.role === "ADMIN";
+
+  const [asLinker, asSeeker] = await Promise.all([
+    isLinker ? getConnectionsByUser(user.id) : Promise.resolve([]),
+    isSeeker ? getConnectionsForSeeker(user.id) : Promise.resolve([]),
+  ]);
+
+  // BOTH-role members can appear in both result sets; de-duplicate by id.
+  const byId = new Map<string, (typeof asLinker)[number]>();
+  for (const c of [...asLinker, ...asSeeker]) {
+    if (!byId.has(c.id)) byId.set(c.id, c as (typeof asLinker)[number]);
+  }
+  const connections = [...byId.values()].sort(
+    (a, b) =>
+      new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
+  );
 
   // Resolve role + deadline + flag per connection so each member sees their own
   // next step without having to open the connection first.
@@ -154,7 +177,11 @@ export default async function ConnectionsPage() {
           <CardContent className="flex flex-col items-center gap-3 p-10 text-center">
             <Handshake className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
             <p className="text-muted-foreground">
-              No connections yet. They appear once a Seeker selects your proposal.
+              {isLinker && !isSeeker
+                ? "No connections yet. They appear once a Seeker selects your proposal."
+                : isSeeker && !isLinker
+                  ? "No connections yet. They appear once you select a Linker."
+                  : "No connections yet. They appear when you select a Linker or a Seeker selects you."}
             </p>
             <Button asChild>
               <Link href="/marketplace">Browse opportunities</Link>

@@ -18,7 +18,7 @@ export const JOMLINK_APP_TAG = "jomlink";
  * schema-scoped client to a permissive type to allow `.from(...)` on any table.
  */
 export function jomlinkSchema() {
-  return getServiceRoleClient().schema("jomlink" as never) as unknown as {
+  return getServiceRoleClient() as unknown as {
     from: (table: string) => any;
   };
 }

@@ -2,7 +2,7 @@ import { getServiceRoleClient } from "@/lib/supabase/admin";
 import type { AuditLogRow } from "@/lib/jomlink-types";
 
 const sc = () =>
-  getServiceRoleClient().schema("jomlink" as never) as unknown as {
+  getServiceRoleClient() as unknown as {
     from: (table: string) => any;
   };
 

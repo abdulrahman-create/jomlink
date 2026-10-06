@@ -79,3 +79,31 @@
 ## Notes / Risks
 - The **relationship database is the core asset** — treat visibility & privacy rules as first-class.
 - Future-proof: relationship should later link to a shared `organisations` entity table (already in schema).
+
+---
+
+## Addendum — relationship declarations could not be saved (fixed in Phase 11)
+
+**Status:** ✅ Fixed 2026-10-06 · see `phase-11-match-score-and-data-layer.md`
+
+The declaration form on `/dashboard/relationships` failed for **every** member
+with the generic message *"Could not save the relationship."* Two independent
+causes, neither of them in Phase 2's own code:
+
+1. **Every query resolved against the `public` schema**, not `jomlink`. The
+   service-role client was constructed without `db.schema` and asked for the
+   schema per-call; supabase-js drops those headers, so PostgREST answered from
+   `public`, where no Jomlink table exists (`404 PGRST205`). Relationship
+   *reads* were broken by the same cause — the form is simply where it surfaced.
+2. **The insert included an `app` column** that exists only on `users`
+   (`400 42703`).
+
+**Lesson recorded for this phase's data model:** relationship declarations are
+only as good as the write path. A declaration that silently fails to persist
+leaves the platform's core asset (`relationships`) empty while the UI gives no
+indication why. Where an action can fail for structurally different reasons,
+surface which one rather than a catch-all string.
+
+> **Still open:** the match score built on these declarations **trusts them at
+> face value** — `relationship_verifications` is defined in `prisma/schema.prisma`
+> but has no live table and is not built.

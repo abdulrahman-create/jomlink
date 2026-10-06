@@ -14,12 +14,13 @@ import {
   getOpportunityById,
   getProfileByUserId,
   getRelationships,
+  getEmployment,
   getProposalsByOpportunity,
   getProposalByLinkerAndOpportunity,
   getConnectionByOpportunity,
 } from "@/lib/queries";
 import { computeFunding } from "@/lib/funding";
-import { computeMatchScore, matchLabel } from "@/lib/matching";
+import { computeMatchScore, matchLabel, matchReason, buildMatchInput, matchOpportunityFields } from "@/lib/matching";
 import { OPPORTUNITY_CATEGORIES, formatDate } from "@/lib/constants";
 import type { LinkerProposalRow } from "@/lib/jomlink-types";
 import { SiteHeaderWithUser } from "@/components/site-header-with-user";
@@ -150,32 +151,23 @@ export default async function OpportunityDetailPage({
   // For a logged-in Linker, compute a match score against their profile.
   let matchScore: number | null = null;
   let matchLabelText: string | null = null;
+  let matchReasonText: string | null = null;
   if (user && !isOwner) {
     const [profile, relationships] = await Promise.all([
       getProfileByUserId(user.id),
       getRelationships(user.id),
     ]);
-    matchScore = computeMatchScore({
-      opportunity: {
-        category: opp.category,
-        target_entity: opp.target_entity,
-        target_role: opp.target_role,
-        geographic_preference: opp.geographic_preference,
-        is_restricted_category: opp.is_restricted_category,
+    const employment = profile ? await getEmployment(profile.id) : [];
+    const matchInput = buildMatchInput({
+      opportunity: matchOpportunityFields(opp),
+      linker: {
+        member_profiles: profile ? { ...profile, employment_history: employment } : null,
+        relationships,
       },
-      profile: profile
-        ? {
-            industry: profile.industry,
-            country: profile.country,
-            current_organisation: profile.current_organisation,
-            current_position: profile.current_position,
-          }
-        : null,
-      relationships,
-      verifiedBadge: profile?.verified_badge ?? false,
-      yearsOfExperience: profile?.years_of_experience ?? null,
     });
+    matchScore = computeMatchScore(matchInput);
     matchLabelText = matchLabel(matchScore);
+    matchReasonText = matchReason(matchInput);
   }
 
   const funding = computeFunding(Number(opp.offer_amount) || 0);
@@ -323,7 +315,7 @@ export default async function OpportunityDetailPage({
               <div>
                 <p className="font-semibold">{matchLabelText}</p>
                 <p className="text-sm text-muted-foreground">
-                  Relevance score based on your profile, relationships and reputation..
+                  {matchReasonText ?? "Based on your profile, relationships and reputation"}.
                 </p>
               </div>
             </CardContent>

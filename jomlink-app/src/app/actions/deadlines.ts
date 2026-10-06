@@ -17,6 +17,7 @@ import {
 } from "@/lib/queries";
 import { buildReputationValues } from "@/lib/reputation";
 import { clearMissedCommitmentFlag } from "@/lib/flags";
+import { isConnectionOpen } from "@/lib/status";
 
 export type DeadlineState = {
   error?: string;
@@ -58,7 +59,7 @@ export async function requestDeadlineAction(
   const opp = await getOpportunityById(conn.opportunity_id);
   if (!opp) return { error: "Opportunity not found." };
 
-  if (["COMPLETED", "FAILED", "DISPUTED"].includes(conn.status)) {
+  if (!isConnectionOpen(conn.status)) {
     return { error: "This connection is closed." };
   }
 

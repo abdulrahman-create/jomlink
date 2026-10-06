@@ -17,6 +17,11 @@ import {
 } from "@/lib/queries";
 import { doubleEntry, accounts } from "@/lib/ledger";
 import { FEES, formatMYR } from "@/lib/constants";
+import {
+  isOpportunityTerminal,
+  isProposalNegotiable,
+  isProposalSelectable,
+} from "@/lib/status";
 import { notify } from "@/lib/notify";
 
 // ── Validation ──────────────────────────────────────────────
@@ -62,9 +67,16 @@ export async function counterOfferAction(
     return { error: "You are not part of this proposal." };
   }
 
-  // Only allow negotiation while the proposal is still open.
-  if (["SELECTED", "COMPLETED", "REJECTED", "WITHDRAWN"].includes(proposal.status)) {
+  // Only allow negotiation while the proposal is still open. Delegated to the
+  // shared predicate so this guard and the UI cannot drift apart again — a
+  // SELECTED proposal has already committed escrow, so its terms are locked.
+  if (!isProposalNegotiable(proposal.status)) {
     return { error: "This proposal is no longer open for negotiation." };
+  }
+  // Completing a connection does not rewrite the proposal rows behind it, so a
+  // proposal can still look negotiable on an opportunity that has finished.
+  if (isOpportunityTerminal(opp.status)) {
+    return { error: "This opportunity has closed, so its terms are final." };
   }
 
   const parsed = CounterSchema.safeParse({
@@ -133,6 +145,18 @@ export async function acceptTermsAction(
     return { error: "You are not part of this proposal." };
   }
 
+  // Same gate as counterOfferAction. This was previously missing entirely, which
+  // allowed terms to be re-accepted on an already-SELECTED or COMPLETED proposal
+  // and silently overwrite the agreed_reward after escrow had been committed.
+  if (!isProposalNegotiable(proposal.status)) {
+    return { error: "This proposal is no longer open for negotiation." };
+  }
+  // A finished opportunity must not be renegotiated, however its proposal rows
+  // are labelled — completing a connection does not rewrite them.
+  if (isOpportunityTerminal(opp.status)) {
+    return { error: "This opportunity has closed, so its terms are final." };
+  }
+
   const agreedReward = Number(formData.get("agreedReward") || proposal.proposed_reward);
   const agreedDeliverable = String(formData.get("agreedDeliverable") || proposal.proposed_deliverable || "");
 
@@ -141,6 +165,31 @@ export async function acceptTermsAction(
     return {
       error: `The agreed reward must be at least ${formatMYR(MIN_REWARD)}.`,
     };
+  }
+
+  /**
+   * Affordability. The SEEKER funds the reward, so a Seeker accepting terms is
+   * making a payment commitment and must be able to cover it.
+   *
+   * This check was missing: `acceptTermsAction` enforced only the reward floor,
+   * so a Seeker holding RM1,030 could accept terms of RM2,100 and the proposal
+   * flipped to ACCEPTED with `agreed_reward` written — no escrow, no funds, no
+   * transaction. A commitment with nothing behind it.
+   *
+   * The Linker is deliberately not checked: they receive the money, they do not
+   * fund it.
+   */
+  if (isSeeker) {
+    const balance = await getWalletBalance(user.id);
+    if (balance < agreedReward) {
+      return {
+        error: `Insufficient wallet credit. Accepting these terms requires full settlement of the ${formatMYR(
+          agreedReward
+        )} reward, but your balance is ${formatMYR(
+          balance
+        )}. Top up your wallet and try again.`,
+      };
+    }
   }
 
   try {
@@ -201,6 +250,17 @@ export async function selectLinkerAction(
   }
   if (opp.status !== "ACTIVE" && opp.status !== "PROPOSAL_RECEIVED" && opp.status !== "NEGOTIATION") {
     return { error: "This opportunity is not in a selectable state." };
+  }
+  // The opportunity check above is not sufficient on its own: a proposal can be
+  // REJECTED/WITHDRAWN while its opportunity is still open, and such a row must
+  // never be selectable.
+  if (!isProposalSelectable(proposal.status)) {
+    return { error: "This proposal is no longer selectable." };
+  }
+  // An opportunity that has already finished must never be re-selected, even via
+  // the connection-recovery path below.
+  if (isOpportunityTerminal(opp.status)) {
+    return { error: "This opportunity has closed." };
   }
 
   const agreedReward = Number(formData.get("agreedReward") || proposal.proposed_reward);

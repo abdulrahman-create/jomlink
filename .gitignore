@@ -2,3 +2,6 @@
 /JOMLINK PLATFORM BLUEPRINT v1.md
 /make_this_person_walk_toward_a.mp4
 /web design.txt
+# graphify scratch output. The tracked graph lives at /graphify-out (repo root);
+# this directory is a regenerable local artifact and should not be committed.
+/jomlink-app/src/graphify-out/

@@ -5,10 +5,19 @@ import { getCurrentUser } from "@/lib/auth";
 import {
   getOpportunityById,
   getProposalsWithLinker,
+  getWalletBalance,
 } from "@/lib/queries";
 import { SiteHeaderWithUser } from "@/components/site-header-with-user";
 import { SiteFooter } from "@/components/site-footer";
 import { ProposalCard } from "./proposal-card";
+import {
+  computeMatchScore,
+  matchLabel,
+  matchReason,
+  buildMatchInput,
+  matchOpportunityFields,
+  type LinkedMember,
+} from "@/lib/matching";
 import type { LinkerProposalRow } from "@/lib/jomlink-types";
 
 export const metadata = { title: "Proposals · Jomlink" };
@@ -27,6 +36,12 @@ export default async function OpportunityProposalsPage({
   if (opp.seeker_id !== user.id) redirect("/opportunities/" + id);
 
   const proposals = await getProposalsWithLinker(opp.id);
+
+  // Selecting a Linker settles the FULL reward from the Seeker's wallet. Load the
+  // balance here so the card can show the shortfall and disable the button up
+  // front — otherwise the Seeker only learns they cannot afford it after pressing
+  // Select, which is a dead end.
+  const walletBalance = await getWalletBalance(user.id);
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -50,13 +65,27 @@ export default async function OpportunityProposalsPage({
           </div>
         ) : (
           <div className="space-y-6">
-            {proposals.map(
-              (p: LinkerProposalRow & {
-                users?: { full_name?: string; country?: string } | null;
-              }) => (
-                <ProposalCard key={p.id} proposal={p} opportunityId={opp.id} />
-              )
-            )}
+            {proposals.map((p: LinkerProposalRow & { users?: LinkedMember | null }) => {
+              // Score each proposal against the opportunity so the Seeker can
+              // see how strong each Linker's claim to the target entity is.
+              const matchInput = buildMatchInput({
+                opportunity: matchOpportunityFields(opp),
+                linker: p.users ?? null,
+              });
+              const score = computeMatchScore(matchInput);
+              return (
+                <ProposalCard
+                  key={p.id}
+                  proposal={p}
+                  opportunityId={opp.id}
+                  opportunityStatus={opp.status}
+                  walletBalance={walletBalance}
+                  matchScore={score}
+                  matchLabelText={matchLabel(score)}
+                  matchReasonText={matchReason(matchInput)}
+                />
+              );
+            })}
           </div>
         )}
       </main>

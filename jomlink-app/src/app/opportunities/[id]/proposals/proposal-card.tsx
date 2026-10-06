@@ -2,19 +2,20 @@
 
 import * as React from "react";
 import { useActionState } from "react";
-import { Loader2, MessageSquare, Send, UserCheck } from "lucide-react";
+import Link from "next/link";
+import { Loader2, UserCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { NegotiationPanel } from "@/components/negotiation-panel";
+import { selectLinkerAction, type NegotiationState } from "@/app/actions/negotiations";
 import {
-  counterOfferAction,
-  selectLinkerAction,
-  type NegotiationState,
-} from "@/app/actions/negotiations";
-import { formatDate, FEES, formatMYR } from "@/lib/constants";
+  isOpportunitySelectable,
+  isOpportunityTerminal,
+  isProposalNegotiable,
+  isProposalSelectable,
+} from "@/lib/status";
+import type { LinkedMember } from "@/lib/matching";
 import type { LinkerProposalRow, ProposalNegotiationRow } from "@/lib/jomlink-types";
 
 const initialState: NegotiationState = {};
@@ -39,40 +40,101 @@ function money(n: number | null | undefined) {
 
 export function ProposalCard({
   proposal,
-  opportunityId,
+  matchScore,
+  matchLabelText,
+  matchReasonText,
+  opportunityStatus,
+  walletBalance,
 }: {
   proposal: LinkerProposalRow & {
-    users?: { full_name?: string; country?: string } | null;
+    users?: LinkedMember | null;
     connections?: { id: string }[] | null;
   };
-  opportunityId: string;
+  /** Retained in the prop contract; the card routes by proposal id. */
+  opportunityId?: string;
+  /**
+   * The opportunity's status. A CLOSED opportunity (COMPLETED/CANCELLED/EXPIRED)
+   * must not offer Select or Counter-offer, however its proposals are labelled —
+   * the proposal rows lag behind the opportunity because completing the
+   * connection does not rewrite them.
+   */
+  opportunityStatus?: string;
+  /**
+   * The Seeker's available wallet credit. Selecting settles the full reward from
+   * it, so passing this in lets the card refuse up front instead of letting the
+   * member press Select and be told they are short. `undefined` means the balance
+   * was not loaded — fall back to the server's own check rather than blocking.
+   */
+  walletBalance?: number | null;
+  /** Precomputed server-side — the score runs on relationship data the client does not hold. */
+  matchScore?: number | null;
+  matchLabelText?: string | null;
+  matchReasonText?: string | null;
 }) {
-  const [counterState, counterAction, counterPending] = useActionState<
-    NegotiationState,
-    FormData
-  >(counterOfferAction, initialState);
   const [selectState, selectAction, selectPending] = useActionState<
     NegotiationState,
     FormData
   >(selectLinkerAction, initialState);
 
   const [negotiations, setNegotiations] = React.useState<ProposalNegotiationRow[]>([]);
-  const [showCounter, setShowCounter] = React.useState(false);
 
-  // Load negotiation thread on mount.
+  // Load negotiation thread on mount — needed here to decide whether the Seeker
+  // may accept (you cannot accept your own standing offer).
   React.useEffect(() => {
     fetch(`/api/proposals/${proposal.id}/negotiations`)
       .then((r) => (r.ok ? r.json() : []))
-      .then((data) => setNegotiations(data))
+      .then((data) => setNegotiations(Array.isArray(data) ? data : []))
       .catch(() => setNegotiations([]));
   }, [proposal.id]);
 
-  const isOpen = !["COMPLETED", "REJECTED", "WITHDRAWN"].includes(proposal.status);
+  const latest = negotiations.length > 0 ? negotiations[negotiations.length - 1] : null;
+  const canAcceptTerms = latest ? latest.from_role !== "SEEKER" : true;
+
+  /**
+   * The reward that will actually be committed to escrow.
+   *
+   * Precedence:
+   *   1. a previously agreed reward (terms already locked), else
+   *   2. the last counter-offer in the thread — that is the number currently on
+   *      the table, and either side may accept it — else
+   *   3. the Linker's original ask.
+   *
+   * Note this is the amount *on the table*, not a settled price: a counter-offer
+   * from the Seeker is still their own proposal, so the figure may move again.
+   * It is the right number to check affordability against, because it is what
+   * Select/Accept would commit.
+   */
+  const effectiveReward =
+    proposal.agreed_reward ?? latest?.offered_reward ?? proposal.proposed_reward;
+
+  // Authority lives in lib/status.ts — see the note there about the five
+  // divergent lists this replaced.
+  const negotiable = isProposalNegotiable(proposal.status);
+  const selectable = isProposalSelectable(proposal.status);
+
+  // A proposal's own status is NOT enough: completing the connection does not
+  // rewrite proposal rows, so a `Selected` or `Under review` proposal can sit on
+  // an opportunity that is already COMPLETED. Gate on the opportunity too, or a
+  // finished project keeps offering Select and Counter-offer.
+  const oppClosed = isOpportunityTerminal(opportunityStatus);
+  const canNegotiate = negotiable && !oppClosed;
 
   // A SELECTED proposal already escrowed the reward — unless the connection was
   // never created, in which case the Seeker can press Select to finish it.
   const needsConnection = proposal.status === "SELECTED" && !proposal.connections?.length;
-  const canSelect = isOpen || needsConnection;
+  const canSelect =
+    (selectable || needsConnection) &&
+    (isOpportunitySelectable(opportunityStatus) || needsConnection);
+
+  // Selecting settles the full reward from the Seeker's wallet. Check it here so
+  // an unaffordable Select is refused before the click, not after.
+  // `needsConnection` re-opens an already-funded handoff, which must not be
+  // re-charged, so affordability does not apply to it.
+  const shortfall =
+    !needsConnection && typeof walletBalance === "number"
+      ? Math.max(0, effectiveReward - walletBalance)
+      : 0;
+  const canAfford = shortfall <= 0;
 
   return (
     <Card className="overflow-hidden">
@@ -94,9 +156,29 @@ export function ProposalCard({
               {proposal.users?.country ?? ""}
             </p>
           </div>
-          <div className="text-right">
-            <p className="text-xl font-bold text-primary">{money(proposal.proposed_reward)}</p>
-            <p className="text-xs text-muted-foreground">Proposed reward</p>
+          <div className="flex items-center gap-3">
+            {matchScore != null && (
+              <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2">
+                <div
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-soft text-sm font-bold text-primary"
+                  aria-hidden="true"
+                >
+                  {matchScore}
+                </div>
+                <div className="text-left">
+                  <p className="text-xs font-semibold leading-tight">
+                    {matchLabelText ?? "Match"}
+                  </p>
+                  <p className="text-[11px] leading-tight text-muted-foreground">
+                    {matchReasonText ?? "Relevance score"}
+                  </p>
+                </div>
+              </div>
+            )}
+            <div className="text-right">
+              <p className="text-xl font-bold text-primary">{money(proposal.proposed_reward)}</p>
+              <p className="text-xs text-muted-foreground">Proposed reward</p>
+            </div>
           </div>
         </div>
 
@@ -135,53 +217,53 @@ export function ProposalCard({
           )}
         </div>
 
-        {/* Negotiation thread */}
-        <div className="rounded-md border border-border bg-muted p-3">
-          <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
-            <MessageSquare className="h-4 w-4 text-primary" aria-hidden="true" /> Negotiation
+        {/* Negotiation — shared with the Linker's dashboard so both sides see
+            and can answer the same counter-offer thread. */}
+        <NegotiationPanel
+          proposalId={proposal.id}
+          currentReward={proposal.agreed_reward ?? proposal.proposed_reward}
+          currentDeliverable={proposal.agreed_deliverable ?? proposal.proposed_deliverable}
+          status={proposal.status}
+          negotiable={canNegotiate}
+          canAccept={canAcceptTerms}
+          shortfall={shortfall}
+        />
+
+        {/* Explain the missing controls rather than leaving the card looking
+            broken: the proposal's own badge may read "Under review" on an
+            opportunity that has already finished. */}
+        {oppClosed && (
+          <p className="text-xs text-muted-foreground">
+            This opportunity is{" "}
+            {(opportunityStatus ?? "").toLowerCase()}, so this proposal can no
+            longer be selected or negotiated.
           </p>
-          {negotiations.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No counter-offers yet.</p>
-          ) : (
-            <ul className="space-y-2">
-              {negotiations.map((n) => (
-                <li key={n.id} className="rounded-md bg-card p-2 text-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold">
-                      {n.from_role === "LINKER" ? "Linker" : "Seeker"} offered{" "}
-                      {money(n.offered_reward)}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {formatDate(n.created_at)}
-                    </span>
-                  </div>
-                  {n.message && <p className="mt-1 text-muted-foreground">{n.message}</p>}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        )}
 
         {/* Actions */}
         {canSelect && (
           <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setShowCounter((v) => !v)}
-            >
-              Counter-offer
-            </Button>
             <form action={selectAction}>
               <input type="hidden" name="proposalId" value={proposal.id} />
-              <input type="hidden" name="agreedReward" value={proposal.proposed_reward} />
+              {/*
+                Commit the EFFECTIVE reward, not the Linker's original ask. Once
+                either side has countered, the number that was agreed is the last
+                offer in the thread — submitting `proposed_reward` here would
+                escrow the stale opening figure (e.g. RM2,200) after the parties
+                had settled on RM2,100, and the helper text below would contradict
+                the amount actually charged.
+              */}
+              <input type="hidden" name="agreedReward" value={effectiveReward} />
               <input
                 type="hidden"
                 name="agreedDeliverable"
-                value={proposal.proposed_deliverable ?? ""}
+                value={proposal.agreed_deliverable ?? proposal.proposed_deliverable ?? ""}
               />
-              <Button type="submit" size="sm" disabled={selectPending}>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={selectPending || !canAfford}
+              >
                 {selectPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                 ) : (
@@ -195,12 +277,29 @@ export function ProposalCard({
           </div>
         )}
 
-        {canSelect && !needsConnection && (
+        {canSelect && !needsConnection && canAfford && (
           <p className="text-xs text-muted-foreground">
             Selecting commits the full agreed reward from your wallet into escrow
             and opens the connection. Make sure your wallet covers{" "}
-            {money(proposal.agreed_reward ?? proposal.proposed_reward)}.
+            {money(effectiveReward)}.
           </p>
+        )}
+
+        {/* Short of the reward: say by how much and offer the fix, rather than
+            letting the member press Select and hit a rejection. */}
+        {canSelect && !needsConnection && !canAfford && (
+          <div className="rounded-md border border-amber-300 bg-amber-50 p-3">
+            <p className="text-sm font-medium text-amber-800">
+              You need {money(shortfall)} more to select this Linker.
+            </p>
+            <p className="mt-1 text-xs text-amber-700">
+              Selecting commits {money(effectiveReward)} from your wallet, but your
+              balance is {money(walletBalance ?? 0)}.
+            </p>
+            <Button asChild size="sm" className="mt-2">
+              <Link href="/dashboard/wallet">Top up wallet</Link>
+            </Button>
+          </div>
         )}
 
         {needsConnection && (
@@ -212,43 +311,6 @@ export function ProposalCard({
 
         {selectState?.error && (
           <p className="text-sm text-destructive">{selectState.error}</p>
-        )}
-
-        {/* Counter-offer form */}
-        {showCounter && (
-          <form action={counterAction} className="space-y-3 rounded-md border border-border p-3">
-            <input type="hidden" name="proposalId" value={proposal.id} />
-            <div className="space-y-2">
-              <Label htmlFor={`reward-${proposal.id}`}>Offered reward (MYR)</Label>
-              <Input
-                id={`reward-${proposal.id}`}
-                name="offeredReward"
-                type="number"
-                min={FEES.MIN_OPPORTUNITY_REWARD}
-                step="0.01"
-                defaultValue={proposal.proposed_reward}
-                required
-              />
-              <p className="text-xs text-muted-foreground">
-                Minimum {formatMYR(FEES.MIN_OPPORTUNITY_REWARD)}
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor={`msg-${proposal.id}`}>Message (optional)</Label>
-              <Textarea id={`msg-${proposal.id}`} name="message" rows={2} />
-            </div>
-            {counterState?.error && (
-              <p className="text-sm text-destructive">{counterState.error}</p>
-            )}
-            <Button type="submit" size="sm" disabled={counterPending}>
-              {counterPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              ) : (
-                <Send className="h-4 w-4" aria-hidden="true" />
-              )}
-              Post counter-offer
-            </Button>
-          </form>
         )}
       </CardContent>
     </Card>

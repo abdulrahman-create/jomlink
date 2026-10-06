@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { getServiceRoleClient } from "@/lib/supabase/admin";
+import { jomlinkSchema } from "@/lib/data";
 import {
   createKycRecord,
   createKycBiometric,
@@ -231,11 +232,11 @@ export async function withdrawBiometricConsentAction(): Promise<void> {
 
   const records = await getKycBiometricsByUser(user.id);
   const supabase = getServiceRoleClient();
+  const db = jomlinkSchema();
   const now = new Date().toISOString();
   for (const r of records) {
     if (r.purge_requested_at) continue;
-    await supabase
-      .schema("jomlink" as never)
+    await db
       .from("kyc_biometrics")
       .update({ purge_requested_at: now, updated_at: now })
       .eq("id", r.id);
@@ -264,8 +265,7 @@ export async function wipeBiometricDataAction(): Promise<void> {
     await supabase.storage.from(BIOMETRIC_BUCKET).remove(paths);
   }
 
-  await supabase
-    .schema("jomlink" as never)
+  await jomlinkSchema()
     .from("kyc_biometrics")
     .delete()
     .eq("user_id", user.id);

@@ -38,7 +38,7 @@ import type {
  */
 
 const sc = () =>
-  getServiceRoleClient().schema("jomlink" as never) as unknown as {
+  getServiceRoleClient() as unknown as {
     from: (table: string) => any;
   };
 
@@ -215,9 +215,10 @@ export async function createOrganisation(values: Record<string, unknown>) {
 }
 
 export async function createRelationship(userId: string, values: Record<string, unknown>) {
+  // NB: no `app` column on this table — only `users` carries the isolation tag.
   const { data, error } = await sc()
     .from("relationships")
-    .insert({ user_id: userId, ...values, app: JOMLINK_APP_TAG })
+    .insert({ user_id: userId, ...values })
     .select("*")
     .single();
   if (error) throw error;
@@ -674,7 +675,9 @@ export async function getProposalWithLinker(id: string) {
 export async function getProposalsWithLinker(opportunityId: string) {
   const { data, error } = await sc()
     .from("linker_proposals")
-    .select("*, users(full_name, country, role), connections(id)")
+    .select(
+      "*, users(full_name, country, role, member_profiles(*, employment_history(*)), relationships(*)), connections(id)"
+    )
     .eq("opportunity_id", opportunityId)
     .order("created_at", { ascending: false });
   if (error) throw error;
