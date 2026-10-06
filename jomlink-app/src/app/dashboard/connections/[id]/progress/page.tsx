@@ -99,12 +99,20 @@ export default async function ProgressThreadPage({
 
   return (
     <div className="space-y-6">
-      <Link
-        href={`/dashboard/connections/${conn.id}`}
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary"
-      >
-        <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Back to connection
-      </Link>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <Link
+          href={`/dashboard/connections/${conn.id}`}
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary"
+        >
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Back to connection
+        </Link>
+        <Link
+          href="/dashboard/connections"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary"
+        >
+          All connections
+        </Link>
+      </div>
 
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Progress Reports</h1>

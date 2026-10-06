@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Calendar, ClipboardCheck, Sparkles, Scale, AlertTriangle, CalendarClock, Flag, MessageSquare } from "lucide-react";
+import { ArrowLeft, Calendar, ClipboardCheck, Sparkles, Scale, AlertTriangle, CalendarClock, Flag, MessageSquare, Paperclip } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
 import {
   getConnectionById,
@@ -82,10 +82,10 @@ export default async function ConnectionDetailPage({
   return (
     <div className="space-y-6">
       <Link
-        href="/dashboard"
+        href="/dashboard/connections"
         className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary"
       >
-        <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Back to dashboard
+        <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Back to connections
       </Link>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -213,7 +213,15 @@ export default async function ConnectionDetailPage({
               update history.
             </p>
             {["COMPLETED", "FAILED", "DISPUTED"].includes(conn.status) ? (
-              <p className="text-muted-foreground">The thread has ended.</p>
+              <p className="text-muted-foreground">
+                The thread has ended.{" "}
+                <Link
+                  href={`/dashboard/connections/${conn.id}/progress`}
+                  className="font-semibold text-primary hover:underline"
+                >
+                  View the report history
+                </Link>
+              </p>
             ) : (
               <Link
                 href={`/dashboard/connections/${conn.id}/progress`}
@@ -293,6 +301,27 @@ export default async function ConnectionDetailPage({
                     )}
                   </div>
                   {e.description && <p className="mt-1 text-muted-foreground">{e.description}</p>}
+                  {e.file_access_key ? (
+                    <a
+                      href={`/api/evidence/${e.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
+                    >
+                      <Paperclip className="h-3 w-3" aria-hidden="true" />
+                      View attachment
+                    </a>
+                  ) : e.file_url ? (
+                    <a
+                      href={e.file_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
+                    >
+                      <Paperclip className="h-3 w-3" aria-hidden="true" />
+                      View link
+                    </a>
+                  ) : null}
                 </li>
               ))}
             </ul>

@@ -21,6 +21,7 @@ import {
 } from "@/lib/queries";
 import { accounts, doubleEntry } from "@/lib/ledger";
 import { calculateLinkerPayout, roundMoney } from "@/lib/funding";
+import { notify, notifyConnectionParties, notifyUser } from "@/lib/notify";
 
 export async function raiseDisputeAction(formData: FormData) {
   const user = await getCurrentUser();
@@ -96,6 +97,15 @@ export async function raiseDisputeAction(formData: FormData) {
     },
   });
 
+  // Tell the counterparty a dispute has been opened — escrow is frozen, so
+  // they must not be surprised by a stalled payout.
+  await notifyUser(isSeeker ? conn.linker_id : opp.seeker_id, conn.id, {
+    type: "DISPUTE_RAISED",
+    title: "A dispute was raised on your connection",
+    body: `${reason}. Reward release is on hold until an administrator resolves it.`,
+    data: { disputeId: dispute.id, opportunityId: opp.id },
+  });
+
   revalidatePath(`/dashboard/connections/${conn.id}`);
   revalidatePath(`/admin/disputes`);
   revalidatePath(`/admin`);
@@ -110,6 +120,11 @@ export async function updateDisputeStatusAction(formData: FormData) {
     throw new Error("Dispute ID and status required");
   }
 
+  const dispute = await getDisputeById(disputeId);
+  if (!dispute) {
+    throw new Error("Dispute not found");
+  }
+
   await updateDispute(disputeId, { status });
 
   await recordAuditLog({
@@ -119,6 +134,16 @@ export async function updateDisputeStatusAction(formData: FormData) {
     entityId: disputeId,
     details: { status, updatedBy: admin.user.email },
   });
+
+  // Both parties track the dispute, so both hear about a status change.
+  if (dispute.connection_id) {
+    await notifyConnectionParties(dispute.connection_id, {
+      type: "DISPUTE_STATUS_UPDATED",
+      title: "Your dispute status was updated",
+      body: `An administrator set the dispute to ${status.replace(/_/g, " ").toLowerCase()}.`,
+      data: { disputeId, status },
+    });
+  }
 
   revalidatePath("/admin/disputes");
 }
@@ -314,6 +339,47 @@ export async function resolveDisputeAction(formData: FormData) {
       escrowSettled: escrowTotal,
     },
   });
+
+  // Notify BOTH parties of the ruling and the money movement. Each side gets a
+  // tailored body describing what happened to their funds, because the same
+  // outcome means opposite things to a Seeker (refund) and a Linker (payout).
+  if (conn) {
+    const outcomeLabel = outcome.replace(/_/g, " ").toLowerCase();
+    const seekerBody =
+      outcome === "REFUNDED" || outcome === "FAILED"
+        ? "Your escrow has been refunded in full."
+        : outcome === "PARTIALLY_COMPLETED"
+          ? "Half of your escrow has been refunded."
+          : "The escrow has been released to the Linker.";
+    const linkerBody =
+      outcome === "COMPLETED"
+        ? "Your reward has been released to your wallet."
+        : outcome === "PARTIALLY_COMPLETED"
+          ? "Half of the reward has been released to your wallet."
+          : "The escrow was refunded to the Seeker, so no reward is payable.";
+
+    await notify({
+      userId: opp.seeker_id,
+      type: "DISPUTE_RESOLVED",
+      title: `Dispute resolved: ${outcomeLabel}`,
+      body: `${resolutionNote} ${seekerBody}`,
+      data: { connectionId: conn.id, disputeId, outcome },
+    });
+    await notify({
+      userId: conn.linker_id,
+      type: "DISPUTE_RESOLVED",
+      title: `Dispute resolved: ${outcomeLabel}`,
+      body: `${resolutionNote} ${linkerBody}`,
+      data: { connectionId: conn.id, disputeId, outcome },
+    });
+  } else {
+    await notifyUser(opp.seeker_id, null, {
+      type: "DISPUTE_RESOLVED",
+      title: `Dispute resolved: ${outcome.replace(/_/g, " ").toLowerCase()}`,
+      body: resolutionNote,
+      data: { disputeId, outcome },
+    });
+  }
 
   revalidatePath("/admin/disputes");
   revalidatePath("/admin/transactions");

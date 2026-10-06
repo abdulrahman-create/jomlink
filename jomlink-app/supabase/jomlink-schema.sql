@@ -731,6 +731,25 @@ on conflict (id) do update set
   file_size_limit = excluded.file_size_limit,
   allowed_mime_types = excluded.allowed_mime_types;
 
--- Done. ✅
+-- ── 6d. Storage bucket for connection evidence ─────────────────
+-- Private bucket (public=false) — evidence attached to a connection (meeting
+-- photos, screenshots, appointment confirmations, signed PDFs) is proof used in
+-- deadline disputes and escrow decisions, so it must NOT be publicly served.
+-- The Linker uploads via a server-only action using the SERVICE_ROLE key
+-- (service_role bypasses RLS); parties to the connection and admins read it
+-- through short-lived signed URLs. Objects are addressed by path only, stored
+-- in `connection_evidence.file_access_key`.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'connection-evidence',
+  'connection-evidence',
+  false,
+  10 * 1024 * 1024,  --  10 MB
+  array['image/jpeg','image/png','image/webp','application/pdf']
+)
+on conflict (id) do update set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
 -- Next:the Jomlink app (supabase-js, service-role) reads/writes
 --       `jomlink.*` and tags its auth users with app='jomlink'.

@@ -18,6 +18,7 @@ import {
 } from "@/lib/queries";
 import { accounts, doubleEntry } from "@/lib/ledger";
 import { chargePostingDeposit } from "@/lib/posting";
+import { notify, notifyUser } from "@/lib/notify";
 
 // ── Member Management Actions ────────────────────────────────
 
@@ -38,6 +39,14 @@ export async function suspendMemberAction(formData: FormData) {
     entity: "USER",
     entityId: userId,
     details: { reason, suspendedBy: admin.user.email },
+  });
+
+  await notify({
+    userId,
+    type: "ADMIN_MEMBER_SUSPENDED",
+    title: "Your account has been suspended",
+    body: reason,
+    data: { reason },
   });
 
   revalidatePath("/admin/members");
@@ -62,6 +71,13 @@ export async function reinstateMemberAction(formData: FormData) {
     details: { reinstatedBy: admin.user.email },
   });
 
+  await notify({
+    userId,
+    type: "ADMIN_MEMBER_REINSTATED",
+    title: "Your account has been reinstated",
+    body: "Your account is active again. You can post and accept work as before.",
+  });
+
   revalidatePath("/admin/members");
   revalidatePath("/admin");
 }
@@ -83,6 +99,14 @@ export async function updateMemberRoleAction(formData: FormData) {
     entity: "USER",
     entityId: userId,
     details: { newRole, updatedBy: admin.user.email },
+  });
+
+  await notify({
+    userId,
+    type: "ADMIN_MEMBER_ROLE_UPDATED",
+    title: "Your account role was updated",
+    body: `An administrator set your role to ${newRole}.`,
+    data: { newRole },
   });
 
   revalidatePath("/admin/members");
@@ -209,6 +233,28 @@ export async function moderateOpportunityAction(formData: FormData) {
     },
   });
 
+  await notify({
+    userId: opp.seeker_id,
+    type:
+      newStatus === "ACTIVE"
+        ? "ADMIN_OPPORTUNITY_APPROVED"
+        : newStatus === "CANCELLED"
+        ? "ADMIN_OPPORTUNITY_REJECTED"
+        : "ADMIN_OPPORTUNITY_FLAGGED",
+    title:
+      newStatus === "ACTIVE"
+        ? "Your opportunity is live"
+        : newStatus === "CANCELLED"
+        ? "Your opportunity was rejected"
+        : "Your opportunity was flagged",
+    body:
+      reason ??
+      (newStatus === "ACTIVE"
+        ? "An administrator approved your opportunity — it is now visible in the marketplace."
+        : "An administrator reviewed your opportunity."),
+    data: { opportunityId, newStatus },
+  });
+
   revalidatePath("/admin/opportunities");
   revalidatePath("/marketplace");
   revalidatePath(`/opportunities/${opportunityId}`);
@@ -276,6 +322,19 @@ export async function reviewKycAction(formData: FormData) {
     details: { status, notes, reviewedBy: admin.user.email, userId: kyc?.user_id },
   });
 
+  await notifyUser(kyc?.user_id, null, {
+    type: status === "VERIFIED" ? "ADMIN_KYC_APPROVED" : "ADMIN_KYC_REJECTED",
+    title:
+      status === "VERIFIED"
+        ? "Your identity verification was approved"
+        : "Your identity verification was rejected",
+    body:
+      notes ??
+      (status === "VERIFIED"
+        ? "Your Verified badge is now active on your profile."
+        : "Please review the requirements and submit a new document."),
+  });
+
   revalidatePath("/admin/kyc");
   revalidatePath("/admin");
 }
@@ -290,7 +349,7 @@ export async function reviewRelationshipAction(formData: FormData) {
     throw new Error("Relationship ID and status required");
   }
 
-  await updateRelationshipAdmin(relationshipId, {
+  const relationship = await updateRelationshipAdmin(relationshipId, {
     verification_status: status,
     verified,
   });
@@ -303,6 +362,17 @@ export async function reviewRelationshipAction(formData: FormData) {
     entity: "RELATIONSHIP",
     entityId: relationshipId,
     details: { status, verified, reviewedBy: admin.user.email },
+  });
+
+  await notifyUser(relationship?.user_id, null, {
+    type: verified ? "ADMIN_RELATIONSHIP_VERIFIED" : "ADMIN_RELATIONSHIP_REJECTED",
+    title: verified
+      ? "Your relationship was verified"
+      : "Your relationship verification was rejected",
+    body: relationship?.entity_name
+      ? `${relationship.entity_name} — reviewed by an administrator.`
+      : "An administrator reviewed your relationship claim.",
+    data: { relationshipId },
   });
 
   revalidatePath("/admin/kyc");

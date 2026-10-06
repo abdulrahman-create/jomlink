@@ -13,6 +13,7 @@ import {
 } from "@/lib/queries";
 import { buildReputationValues } from "@/lib/reputation";
 import { clearMissedCommitmentFlag, raiseMissedCommitmentFlag } from "@/lib/flags";
+import { notify, notifyUser } from "@/lib/notify";
 import { FEES } from "@/lib/constants";
 
 export type CompletionState = {
@@ -101,6 +102,15 @@ export async function markConnectionCompleteAction(
       }),
     });
 
+    // The Linker is waiting on this decision, and the payout clock has started.
+    await notify({
+      userId: conn.linker_id,
+      type: "CONNECTION_COMPLETED",
+      title: "The Seeker marked your connection complete",
+      body: `Reward release is scheduled for ${new Date(autoReleaseAt).toDateString()} unless a dispute is raised.`,
+      data: { connectionId: conn.id, opportunityId: opp.id },
+    });
+
     revalidatePath("/dashboard/connections/" + conn.id);
     revalidatePath("/opportunities/" + opp.id);
     return { success: true };
@@ -109,7 +119,6 @@ export async function markConnectionCompleteAction(
     return { error: "Could not mark the connection complete." };
   }
 }
-
 /**
  * Linker requests an extension (extends the auto-release / deadline by days).
  * Seeker approves it (no rejection flow in this phase).
@@ -141,6 +150,14 @@ export async function requestExtensionAction(
     await clearMissedCommitmentFlag({
       connectionId: conn.id,
       reason: "Extension accepted — deadline extended.",
+    });
+
+    const opp = await getOpportunityById(conn.opportunity_id);
+    await notifyUser(opp?.seeker_id, conn.id, {
+      type: "CONNECTION_EXTENSION_REQUESTED",
+      title: "The Linker requested an extension",
+      body: `The auto-release date was extended by ${Math.max(1, Math.min(30, days))} day(s).`,
+      data: { connectionId: conn.id, days },
     });
 
     revalidatePath("/dashboard/connections/" + conn.id);
@@ -198,6 +215,23 @@ export async function markConnectionFailedAction(
         deadlines_missed: (linkerRep?.deadlines_missed ?? 0) + 1,
         flags_raised: (linkerRep?.flags_raised ?? 0) + 1,
       }),
+    });
+
+    // Both parties need the record: the Linker is flagged, the Seeker's escrow
+    // is being voided back to them.
+    await notify({
+      userId: conn.linker_id,
+      type: "CONNECTION_FAILED",
+      title: "The connection was marked failed",
+      body: "The Seeker marked this connection failed. A commitment flag was recorded against your profile.",
+      data: { connectionId: conn.id, opportunityId: opp.id },
+    });
+    await notify({
+      userId: opp.seeker_id,
+      type: "CONNECTION_FAILED",
+      title: "You marked this connection failed",
+      body: "Your escrow is being voided. Any refund will appear in your wallet.",
+      data: { connectionId: conn.id, opportunityId: opp.id },
     });
 
     revalidatePath("/dashboard/connections/" + conn.id);

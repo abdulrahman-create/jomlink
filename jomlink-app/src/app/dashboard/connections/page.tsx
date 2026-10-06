@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Handshake, MessageSquare, Flag } from "lucide-react";
+import { Handshake, MessageSquare, Flag, History } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
 import {
   getConnectionsByUser,
@@ -125,6 +125,16 @@ export default async function ConnectionsPage() {
             isLinker || isSeeker
               ? nextAction(c, isLinker, deadline, !!flag)
               : null,
+          // The thread opens once the deadline is accepted and stays reachable
+          // until the connection closes — independent of nextAction, which only
+          // surfaces it in the ACCEPTED state.
+          progressHref:
+            (isLinker || isSeeker) &&
+            deadline &&
+            (deadline as OpportunityDeadlineRow).status === "ACCEPTED" &&
+            !CLOSED.includes(c.status)
+              ? `/dashboard/connections/${c.id}/progress`
+              : null,
         };
       }
     )
@@ -154,7 +164,7 @@ export default async function ConnectionsPage() {
       ) : (
         <div className="space-y-4">
           {enriched.map(
-            ({ conn: c, isLinker, deadline, flagged, reportCount, next }) => {
+            ({ conn: c, isLinker, deadline, flagged, reportCount, next, progressHref }) => {
               const opp = c.opportunities as { title?: string } | null;
               return (
                 <Card key={c.id} className={flagged ? "border-amber-300" : undefined}>
@@ -193,6 +203,17 @@ export default async function ConnectionsPage() {
                       <Badge variant={c.status === "COMPLETED" ? "success" : "secondary"}>
                         {STATUS_LABEL[c.status] ?? c.status}
                       </Badge>
+                      {/* Only show the standalone thread link when the primary
+                          action isn't already pointing at the progress thread
+                          (nextAction returns it in the ACCEPTED state). */}
+                      {progressHref && next?.href !== progressHref && (
+                        <Button asChild variant="ghost" size="sm">
+                          <Link href={progressHref}>
+                            <History className="h-3.5 w-3.5" aria-hidden="true" />
+                            Progress
+                          </Link>
+                        </Button>
+                      )}
                       {next ? (
                         <Button asChild size="sm">
                           <Link href={next.href}>{next.action}</Link>

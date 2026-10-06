@@ -17,6 +17,7 @@ import {
 } from "@/lib/queries";
 import { doubleEntry, accounts } from "@/lib/ledger";
 import { FEES, formatMYR } from "@/lib/constants";
+import { notify } from "@/lib/notify";
 
 // ── Validation ──────────────────────────────────────────────
 // The agreed reward must stay at or above the platform floor so the 10%
@@ -86,6 +87,19 @@ export async function counterOfferAction(
     if (proposal.status === "SUBMITTED") {
       await updateProposal(proposal.id, { status: "UNDER_REVIEW" });
     }
+
+    // Tell the counterparty a counter-offer landed.
+    const recipient = isLinker ? opp.seeker_id : proposal.linker_id;
+    await notify({
+      userId: recipient,
+      type: "NEGOTIATION_COUNTER_OFFER",
+      title: "New counter-offer on a proposal",
+      body:
+        parsed.data.message?.slice(0, 140) ||
+        `A new reward of ${parsed.data.offeredReward} was proposed.`,
+      data: { proposalId: proposal.id, opportunityId: opp.id },
+    });
+
     revalidatePath("/opportunities/" + opp.id + "/proposals");
     revalidatePath("/dashboard/proposals");
     return { success: true };
@@ -136,6 +150,16 @@ export async function acceptTermsAction(
       agreed_deliverable: agreedDeliverable || null,
       agreed_at: new Date().toISOString(),
     });
+
+    const recipient = isLinker ? opp.seeker_id : proposal.linker_id;
+    await notify({
+      userId: recipient,
+      type: "NEGOTIATION_TERMS_ACCEPTED",
+      title: "Terms were accepted",
+      body: "The agreed reward and deliverable are now locked for this proposal.",
+      data: { proposalId: proposal.id, opportunityId: opp.id },
+    });
+
     revalidatePath("/opportunities/" + opp.id + "/proposals");
     revalidatePath("/dashboard/proposals");
     return { success: true };
@@ -280,9 +304,20 @@ export async function selectLinkerAction(
       status: "PENDING_ACKNOWLEDGEMENT",
       agreed_reward: agreedReward,
     });
+
+    // The Linker's proposal won — this is the moment they need to act on.
+    await notify({
+      userId: proposal.linker_id,
+      type: "CONNECTION_OPENED",
+      title: "You were selected for an opportunity",
+      body: `"${opp.title}" — reward ${formatMYR(agreedReward)}, held in escrow. Set the task deadline to begin.`,
+      data: { opportunityId: opp.id, proposalId: proposal.id },
+    });
+
     revalidatePath("/opportunities/" + opp.id);
     revalidatePath("/opportunities/" + opp.id + "/proposals");
     revalidatePath("/dashboard/wallet");
+    revalidatePath("/dashboard/connections");
     return { success: true };
   } catch (e: unknown) {
     console.error("selectLinkerAction error", e);

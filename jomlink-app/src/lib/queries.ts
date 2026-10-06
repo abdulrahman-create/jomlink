@@ -1030,6 +1030,18 @@ export async function createEvidence(values: Record<string, unknown>) {
   return data as ConnectionEvidenceRow;
 }
 
+export async function getEvidenceById(
+  id: string
+): Promise<ConnectionEvidenceRow | null> {
+  const { data, error } = await sc()
+    .from("connection_evidence")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as ConnectionEvidenceRow | null) ?? null;
+}
+
 // ── Deadlines / progress reports / flags (Phase 9) ─────────────
 
 export async function getDeadlineByConnection(

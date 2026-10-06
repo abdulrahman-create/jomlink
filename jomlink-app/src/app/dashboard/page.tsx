@@ -414,11 +414,20 @@ export default async function DashboardPage() {
               <ul className="divide-y divide-border">
                 {activeConnections.slice(0, 5).map((c: ConnectionRow & { opportunities?: unknown }) => {
                   const opp = c.opportunities as { title?: string } | null;
+                  // Once the deadline is accepted, the progress thread is the
+                  // working surface — link the row straight there instead of
+                  // forcing a detour through the connection detail page.
+                  const threadOpen =
+                    acceptedDeadlineIds.has(c.id) &&
+                    !["COMPLETED", "FAILED", "DISPUTED"].includes(c.status);
+                  const rowHref = threadOpen
+                    ? `/dashboard/connections/${c.id}/progress`
+                    : `/dashboard/connections/${c.id}`;
                   return (
                     <li key={c.id} className="flex items-center justify-between gap-3 py-3">
                       <div className="min-w-0">
                         <Link
-                          href={`/dashboard/connections/${c.id}`}
+                          href={rowHref}
                           className="truncate text-sm font-semibold hover:text-primary"
                         >
                           {opp?.title ?? "Connection"}
@@ -432,15 +441,17 @@ export default async function DashboardPage() {
                             Action needed — set or review the task deadline
                           </p>
                         )}
-                        {acceptedDeadlineIds.has(c.id) &&
-                          !["COMPLETED", "FAILED", "DISPUTED"].includes(c.status) && (
-                            <p className="mt-0.5 flex items-center gap-1 text-xs font-medium text-primary">
-                              <MessageSquare className="h-3 w-3" aria-hidden="true" />
-                              {c.linker_id === user.id
-                                ? "Post a progress update"
-                                : "Review the latest progress report"}
-                            </p>
-                          )}
+                        {threadOpen && (
+                          <Link
+                            href={`/dashboard/connections/${c.id}/progress`}
+                            className="mt-0.5 flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                          >
+                            <MessageSquare className="h-3 w-3" aria-hidden="true" />
+                            {c.linker_id === user.id
+                              ? "Post a progress update"
+                              : "Review the latest progress report"}
+                          </Link>
+                        )}
                       </div>
                       <Badge variant={statusVariant(c.status)}>
                         {CONNECTION_STATUS_LABEL[c.status] ?? c.status}

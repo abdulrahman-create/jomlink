@@ -7,6 +7,7 @@ import {
   Handshake,
   Info,
   Scale,
+  ShieldCheck,
   Wallet,
 } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
@@ -28,7 +29,17 @@ function iconForType(type: string) {
   if (type.startsWith("DISPUTE")) return { Icon: Scale, tone: "text-destructive" };
   if (type.startsWith("PAYOUT") || type.startsWith("REFUND") || type.startsWith("TRANSACTION"))
     return { Icon: Wallet, tone: "text-success" };
-  if (type.startsWith("CONNECTION") || type.startsWith("PROPOSAL"))
+  if (type.startsWith("ADMIN_MEMBER") || type.startsWith("ADMIN_KYC") || type.startsWith("ADMIN_RELATIONSHIP"))
+    return { Icon: ShieldCheck, tone: "text-primary" };
+  if (
+    type.startsWith("CONNECTION") ||
+    type.startsWith("PROPOSAL") ||
+    type.startsWith("EVIDENCE") ||
+    type.startsWith("DEADLINE") ||
+    type.startsWith("PROGRESS") ||
+    type.startsWith("NEGOTIATION") ||
+    type.startsWith("ADMIN_OPPORTUNITY")
+  )
     return { Icon: Handshake, tone: "text-primary" };
   return { Icon: Info, tone: "text-muted-foreground" };
 }

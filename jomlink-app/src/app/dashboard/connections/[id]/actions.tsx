@@ -144,7 +144,11 @@ export function SubmitEvidence({ connectionId }: { connectionId: string }) {
   }, [state, router]);
 
   return (
-    <form action={action} className="mt-3 space-y-3 rounded-md border border-border p-3">
+    <form
+      action={action}
+      className="mt-3 space-y-3 rounded-md border border-border p-3"
+      encType="multipart/form-data"
+    >
       <input type="hidden" name="connectionId" value={connectionId} />
       {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
       <div className="grid gap-3 sm:grid-cols-2">
@@ -166,8 +170,17 @@ export function SubmitEvidence({ connectionId }: { connectionId: string }) {
           />
         </div>
         <div className="space-y-1">
-          <Label htmlFor="fileUrl">File URL (optional)</Label>
-          <Input id="fileUrl" name="fileUrl" placeholder="https://..." />
+          <Label htmlFor="document">Attach document (optional)</Label>
+          <Input
+            id="document"
+            name="document"
+            type="file"
+            accept="image/jpeg,image/png,image/webp,application/pdf"
+            className="cursor-pointer file:mr-3 file:rounded file:border-0 file:bg-muted file:px-2 file:py-1 file:text-xs file:font-medium"
+          />
+          <p className="text-xs text-muted-foreground">
+            JPEG, PNG, WebP or PDF · up to 10 MB
+          </p>
         </div>
       </div>
       <div className="space-y-1">
