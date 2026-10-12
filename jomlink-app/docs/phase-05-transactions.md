@@ -78,3 +78,70 @@
 - Linker pays **10% service fee** on payout.
 - Failed opportunity → **reward** returned to Seeker; the **posting deposit** is refunded only for a pre-selection cancellation (less the listing fee).
 - Currency conversion must never overwrite original transaction value (future).
+
+---
+
+## Update — 2026-10-12 · Payout visibility & bank withdrawals
+
+Two money-path gaps closed after Phase 13: nobody could see **what the Linker
+would actually be paid, or when**, and **neither party could move wallet money
+out**.
+
+### 1. Payout visibility (Linker "how much / when")
+
+- **Connection page — Reward & payout card**
+  (`src/app/dashboard/connections/[id]/page.tsx`): shows the reward held in
+  escrow (`connection.agreed_reward ?? opportunity.offer_amount`), the Linker's
+  **net take-home** (`computeFunding(reward).linkerPayout` = reward − 10%
+  `LINKER_SERVICE_FEE_RATE`), and a **state-driven release line**:
+  - **paid** (`release_status = RELEASED`) → net + released date;
+  - **scheduled** → `connection.auto_release_at` (set at completion =
+    `completedAt + FEES.RELEASE_WAIT_DAYS`);
+  - **held** (dispute, `HELD` / connection `DISPUTED`);
+  - **refunded / void** (`REFUNDED` / `VOID`, or connection `FAILED`);
+  - else → "releases N days after the work is completed and verified".
+- **Wallet — Incoming payouts tile**: sums the net `linkerPayout` of the member's
+  connections not yet released/refunded/held/failed and shows the **next release
+  date**. (Derived from `connections`, because a `payouts` row is only created
+  **at** release.)
+
+### 2. Bank withdrawal requests (member → admin-settled)
+
+Members withdraw their **available (settled) wallet balance** to a saved bank
+account; an admin settles it. **Reuses `jomlink.payouts`** (no new table): a
+request is a payout row with `status = PENDING`, `method = BANK_TRANSFER`,
+`service_fee = 0`.
+
+- **Migration** — `supabase/phase-payout-request.sql` :
+  - `users.bank_name` / `bank_account_no` / `bank_account_name` (text);
+  - `payouts.requested_at` / `approved_by` / `note`;
+  - `transaction_type` gains `WITHDRAWAL` (added to the enum **and** the §1b
+    self-heal `alter type ... add value if not exists` block).
+- **Member actions** (`src/app/actions/payouts.ts`):
+  - `updateBankDetailsAction` — validates bank name / account no (digits, spaces,
+    dashes) / holder name; saves to the user row.
+  - `requestPayoutAction` — requires bank details on file, amount ≤ balance,
+    **one open request at a time**; creates a **PENDING `WITHDRAWAL` transaction**
+    (the payout row's `transaction_id` anchor) + the payout row; audits
+    `PAYOUT_REQUESTED` and notifies the member.
+- **Admin action** (`src/app/actions/admin.ts`): `markPayoutPaidAction`
+  (perm **`finance:payout`**) — idempotent on already-`PAID`; re-checks the
+  balance; sets the `WITHDRAWAL` transaction `COMPLETED`; ledger
+  `wallet:{id} → external:payout`; flips the payout to `PAID` with `released_at`
+  + `approved_by`; audits `PAYOUT_PAID` and notifies the member.
+- **Queries** (`src/lib/queries.ts`): `getPayoutById`, `updatePayout`,
+  `listPendingPayoutRequestsAdmin` (joins member names **and** bank details),
+  `updateBankDetails`.
+- **UI**: wallet `payout-request-panel.tsx` (bank form + withdraw form + pending
+  state); admin `/admin/transactions?tab=requests` with a **Mark as paid** button.
+- **Wallet balance integrity**: `getWalletBalance` and the wallet page treat
+  `WITHDRAWAL` as an **OUT**, so the balance drops after settlement. The wallet is
+  **not** debited at request time — only at settlement — so an un-actioned
+  request never drains the balance.
+- **Notifications**: `PAYOUT_REQUESTED` / `PAYOUT_PAID` route via the existing
+  `PAYOUT*` prefix in `src/lib/notification-links.ts` (admin → `/admin/transactions`,
+  member → `/dashboard/wallet`).
+
+> ⚠️ **Not real money yet.** Settlement records the ledger movement but performs
+> no bank/FPX disbursement — it is the same stubbed-gateway situation as top-ups.
+> See `PROJECT-TRACKING.md` → *Known gaps* #11.

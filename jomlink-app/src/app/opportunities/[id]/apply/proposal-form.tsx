@@ -21,10 +21,12 @@ const initialState: ProposalState = {};
 
 export function ProposalForm({
   opportunityId,
+  offerAmount,
   relationships,
   existing,
 }: {
   opportunityId: string;
+  offerAmount: number;
   relationships: RelationshipRow[];
   existing: LinkerProposalRow | null;
 }) {
@@ -139,19 +141,24 @@ export function ProposalForm({
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="proposedReward">Proposed reward (MYR) *</Label>
+              <Label htmlFor="proposedReward">
+                Proposed reward (MYR){" "}
+                <span className="text-muted-foreground">(optional)</span>
+              </Label>
               <Input
                 id="proposedReward"
                 name="proposedReward"
                 type="number"
                 min={FEES.MIN_OPPORTUNITY_REWARD}
                 step="0.01"
-                placeholder="e.g. 4500"
+                placeholder={`e.g. ${offerAmount}`}
                 defaultValue={existing?.proposed_reward ?? ""}
-                required
               />
               <p className="text-xs text-muted-foreground">
-                Minimum {formatMYR(FEES.MIN_OPPORTUNITY_REWARD)} — the 10% posting deposit
+                Leave blank to accept the Seeker&apos;s reward of{" "}
+                <strong>{formatMYR(offerAmount)}</strong>. Only enter a figure if
+                you are proposing a different reward. Minimum{" "}
+                {formatMYR(FEES.MIN_OPPORTUNITY_REWARD)} — the 10% posting deposit
                 must cover the {formatMYR(FEES.LISTING_FEE)} listing fee.
               </p>
               {state?.fieldErrors?.proposedReward && (

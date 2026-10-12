@@ -71,6 +71,7 @@ export default async function ApplyPage({
 
         <ProposalForm
           opportunityId={opp.id}
+          offerAmount={opp.offer_amount}
           relationships={relationships as RelationshipRow[]}
           existing={existing}
         />

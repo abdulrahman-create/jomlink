@@ -7,11 +7,10 @@ per-phase docs; this file answers *"where are we, what's next, what's blocking"*
 at a glance. For a reverse-chronological *"what happened when"*, see
 [`../../CHANGELOG.md`](../../CHANGELOG.md).
 
-> **Most recent work: Phase 13** — appointment notifications, rejection recovery,
-> appointment **track records** (member + admin dispute view), a direct
-> "Open connection" link, and a proactive **running-out-of-time** deadline-warning
-> layer. **No migration required.** One data issue from Phase 12 still needs a
-> product decision (⚠️ row 1 in *Known gaps*).
+> **Most recent work: post-Phase-13 refinements (2026-10-12)** — optional proposal
+> reward, escrow **payout visibility** for Linkers, and **bank withdrawal
+> requests** (member → admin-settled).
+> `supabase/phase-payout-request.sql` —  . `npm test` **67 passing**.
 
 ---
 
@@ -46,16 +45,23 @@ at a glance. For a reverse-chronological *"what happened when"*, see
 
 ## Outstanding migrations
 
-**One migration is required and NOT yet applied.**
+**Two migrations are required and NOT yet applied.**
 
 | Migration | Needed for | Status |
 |-----------|-----------|--------|
-| `supabase/phase-12-extension-approval.sql` | Extension request/approval flow (§5.14) | ⚠️ **NOT APPLIED** — run it in Supabase → SQL Editor |
+| `supabase/phase-12-extension-approval.sql` | Extension request/approval flow (§5.14) |  **APPLIED** — run it in Supabase → SQL Editor |
+| `supabase/phase-payout-request.sql` | Bank withdrawal requests (member bank details, `WITHDRAWAL` transaction type, payout-request columns) |
 
 > ⚠️ **The extension UI will error until this is applied.** The code queries
 > `jomlink.connection_extensions`, which does not exist yet. PostgREST cannot run
 > DDL and the Postgres port is not reachable from the dev environment, so this
 > must be run by hand. The file is idempotent — safe to re-run.
+>
+> ⚠️ **The bank-withdrawal UI will error until `phase-payout-request.sql` is
+> applied.** The wallet page reads `users.bank_*`, and the settlement writes a
+> `WITHDRAWAL` transaction — both missing until the migration runs. The file is
+> idempotent (all `add column if not exists` + `add value if not exists`) — safe
+> to re-run. Restart the container afterwards so PostgREST reloads the schema.
 
 Two items from earlier phases may still be un-run on an existing database:
 
@@ -107,6 +113,7 @@ Ordered by risk to the pilot, not by effort.
 | 8 | No admin evidence queue | ⚪ Low | Only needed if evidence moderation is actually wanted. Would require an `evidence:write` permission, an `/admin/evidence` page and a review action. The `approved` column is reserved for this. |
 | 9 | Fraud / risk scoring | ⚪ Low | Repeated yellow flags are already recorded and can feed an engine. |
 | 10 | Business accounts, multi-country, multi-currency | ⚪ Low | Architecture-ready, not built. |
+| 11 | **Bank payouts are admin-settled (no real transfer)** | 🟡 Medium | A member requests a withdrawal and an admin marks it `PAID`; the ledger movement is recorded but **no money actually leaves Jomlink** — there is no bank/FPX disbursement integration (same stubbed-gateway situation as top-ups). A production pilot needs a payout API (e.g. a Malaysian disbursement provider) or a documented manual bank-transfer operating procedure. Also: no minimum withdrawal amount, no member-facing cancel of a pending request, and `payouts.method` is free text. |
 
 ---
 

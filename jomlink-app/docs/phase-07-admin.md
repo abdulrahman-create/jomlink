@@ -111,3 +111,28 @@ KYC is **simplified** in the MVP — status + badge only, per the confirmed tech
 - Government category is **restricted**; no guaranteed approvals/tenders.
 - Dispute → **payment hold** → evidence review → resolution.
 - Audit actions are **tamper-resistant** and retained.
+
+---
+
+## Payout settlement (2026-10-12)
+
+Admins settle **member bank-withdrawal requests** from
+`/admin/transactions?tab=requests` (new tab). The request is a `jomlink.payouts`
+row with `status = PENDING` and `method = BANK_TRANSFER`, carrying the member's
+saved bank account.
+
+- **Action:** `markPayoutPaidAction` (`src/app/actions/admin.ts`) — permission
+  **`finance:payout`**. Idempotent (no-op on an already-`PAID` row); re-checks the
+  member's wallet balance covers the amount; completes the anchored `WITHDRAWAL`
+  transaction; records the ledger movement `wallet:{id} → external:payout`; sets
+  the payout to `PAID` with `released_at` + `approved_by`; writes audit action
+  **`PAYOUT_PAID`**; notifies the member.
+- **UI:** `src/app/admin/transactions/mark-paid-button.tsx` (confirms before
+  submitting).
+- **Audit actions added:** `PAYOUT_REQUESTED` (written by the member action) and
+  `PAYOUT_PAID`.
+- **Queries:** `listPendingPayoutRequestsAdmin` (joins member names + bank
+  details), `getPayoutById`, `updatePayout`.
+
+> ⚠️ Settling records the ledger movement but performs **no real bank transfer** —
+> same stubbed-gateway caveat as top-ups. See `PROJECT-TRACKING.md` → *Known gaps* #11.

@@ -70,3 +70,29 @@
 
 ## Notes
 This is the final MVP polish phase. After this, the platform is MVP-complete and ready for a controlled market pilot (Malaysia, MYR).
+
+---
+
+## Update — 2026-10-12 · Wallet layout & bank withdrawals
+
+**Wallet layout fixed.** The wallet's left (2/3) column held only the two short
+stat tiles (Balance, Pending escrow), leaving a large empty gap, while
+**"Withdraw to bank"** sat at the bottom of the tall right-hand column — so the
+most important member action was below the fold. The **Withdraw to bank** panel
+is now in the **left column directly beneath the Balance / Pending escrow tiles**;
+the right column keeps the secondary items (Top up, Total topped up, Incoming
+payouts). Nothing scrolls to reach the withdrawal form.
+
+**New wallet tiles / panels.**
+- **Incoming payouts** tile — net `linkerPayout` of the member's unreleased
+  connections + next release date (see `phase-05-transactions.md`).
+- **Withdraw to bank** panel (`payout-request-panel.tsx`) — save bank account,
+  request a withdrawal of the available balance, see a pending request. Requires
+  the `phase-payout-request.sql` migration.
+
+**Payouts list** now distinguishes **Bank withdrawal** vs **Reward payout** and
+shows paid dates. Wallet balance treats `WITHDRAWAL` as an out.
+
+**Admin surface.** New **Withdrawal requests** tab on
+`/admin/transactions?tab=requests` with a **Mark as paid** action (see
+`phase-07-admin.md` conventions — permission `finance:payout`).

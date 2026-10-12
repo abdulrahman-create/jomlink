@@ -1,14 +1,16 @@
 import Link from "next/link";
-import { Wallet, ArrowUpRight, ArrowDownLeft, RefreshCcw } from "lucide-react";
+import { Wallet, ArrowUpRight, ArrowDownLeft, RefreshCcw, Landmark } from "lucide-react";
 import { requireAdmin } from "@/lib/rbac";
 import {
   listAllTransactionsAdmin,
   listAllPayoutsAdmin,
   listAllRefundsAdmin,
+  listPendingPayoutRequestsAdmin,
 } from "@/lib/queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatMoney, formatDate } from "@/lib/constants";
+import { MarkPayoutPaidButton } from "./mark-paid-button";
 
 export default async function AdminTransactionsPage({
   searchParams,
@@ -18,10 +20,11 @@ export default async function AdminTransactionsPage({
   await requireAdmin("finance:read");
   const { tab = "transactions" } = await searchParams;
 
-  const [transactions, payouts, refunds] = await Promise.all([
+  const [transactions, payouts, refunds, payoutRequests] = await Promise.all([
     listAllTransactionsAdmin(50),
     listAllPayoutsAdmin(50),
     listAllRefundsAdmin(50),
+    listPendingPayoutRequestsAdmin(100),
   ]);
 
   return (
@@ -58,6 +61,16 @@ export default async function AdminTransactionsPage({
           }`}
         >
           Payouts ({payouts.length})
+        </Link>
+        <Link
+          href="/admin/transactions?tab=requests"
+          className={`pb-3 text-sm font-semibold transition-colors border-b-2 px-1 ${
+            tab === "requests"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Withdrawal requests ({payoutRequests.length})
         </Link>
         <Link
           href="/admin/transactions?tab=refunds"
@@ -182,6 +195,75 @@ export default async function AdminTransactionsPage({
                         <Badge variant="success" className="text-[10px]">
                           {p.status}
                         </Badge>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      {tab === "requests" && (
+        <Card className="border-border bg-white shadow-xs overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-border bg-slate-50/75 text-xs text-muted-foreground uppercase font-semibold">
+                <tr>
+                  <th className="px-4 py-3">Requested</th>
+                  <th className="px-4 py-3">Member</th>
+                  <th className="px-4 py-3">Amount</th>
+                  <th className="px-4 py-3">Bank Account</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border text-xs">
+                {payoutRequests.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                      No pending withdrawal requests.
+                    </td>
+                  </tr>
+                ) : (
+                  payoutRequests.map((p: any) => (
+                    <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                        {formatDate(p.requested_at ?? p.created_at)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="font-semibold text-foreground">
+                          {p.users?.full_name || "Member"}
+                        </span>
+                        <span className="block text-[11px] text-muted-foreground">
+                          {p.users?.email}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 font-mono font-bold text-foreground">
+                        {formatMoney(p.net_amount, "MYR")}
+                      </td>
+                      <td className="px-4 py-3">
+                        {p.bank ? (
+                          <>
+                            <span className="font-semibold text-foreground">
+                              {p.bank.bank_name}
+                            </span>
+                            <span className="block text-[11px] text-muted-foreground">
+                              {p.bank.bank_account_no} · {p.bank.bank_account_name}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground">No bank details</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge variant="warning" className="text-[10px]">
+                          {p.status}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3">
+                        <MarkPayoutPaidButton payoutId={p.id} />
                       </td>
                     </tr>
                   ))

@@ -73,7 +73,7 @@ do $$ begin
   create type jomlink.transaction_status as enum ('PENDING','COMPLETED','FAILED','REVERSED','REFUNDED');
 exception when duplicate_object then null; end $$;
 do $$ begin
-  create type jomlink.transaction_type as enum ('OPPORTUNITY_FUNDING','POSTING_DEPOSIT','LISTING_FEE','ACTIVATION_FEE','LINKER_SERVICE_FEE','REWARD_RELEASE','REFUND','PAYOUT','WALLET_CREDIT','WALLET_DEBIT');
+  create type jomlink.transaction_type as enum ('OPPORTUNITY_FUNDING','POSTING_DEPOSIT','LISTING_FEE','ACTIVATION_FEE','LINKER_SERVICE_FEE','REWARD_RELEASE','REFUND','PAYOUT','WALLET_CREDIT','WALLET_DEBIT','WITHDRAWAL');
 exception when duplicate_object then null; end $$;
 do $$ begin
   create type jomlink.dispute_status as enum ('OPEN','UNDER_REVIEW','RESOLVED','CLOSED');
@@ -101,6 +101,7 @@ alter type jomlink.transaction_type add value if not exists 'POSTING_DEPOSIT';
 alter type jomlink.transaction_type add value if not exists 'LISTING_FEE';
 alter type jomlink.transaction_type add value if not exists 'WALLET_CREDIT';
 alter type jomlink.transaction_type add value if not exists 'WALLET_DEBIT';
+alter type jomlink.transaction_type add value if not exists 'WITHDRAWAL';
 
 -- ── 2. Tables ──────────────────────────────────────────────────
 -- Each table is prefixed `jomlink.` so it never collides with `public`.
@@ -133,6 +134,16 @@ alter table jomlink.users
   add column if not exists biometric_consent        boolean not null default false,
   add column if not exists biometric_consent_at     timestamptz,
   add column if not exists biometric_consent_version text;
+
+-- Payout / bank withdrawal details. A member requests a bank transfer so an
+-- admin can pay out their available wallet balance. Stored on the user row (one
+-- bank account per member) so a withdrawal request can be settled without
+-- re-typing. `bank_account_no` is stored as text (leading zeros, no numerals
+-- precision issues). Added via ALTER for the same self-healing reason as above.
+alter table jomlink.users
+  add column if not exists bank_name          text,
+  add column if not exists bank_account_no    text,
+  add column if not exists bank_account_name  text;
 
 create table if not exists jomlink.member_profiles (
   id                      text primary key default gen_random_uuid()::text,
@@ -358,6 +369,13 @@ create table if not exists jomlink.payouts (
   released_at     timestamptz,
   created_at      timestamptz not null default now()
 );
+
+-- Withdrawal-request columns — `payouts` is reused for member bank payout
+-- requests (status PENDING → PAID). Added via ALTER for existing DBs.
+alter table jomlink.payouts
+  add column if not exists requested_at timestamptz,
+  add column if not exists approved_by  text,
+  add column if not exists note         text;
 
 create table if not exists jomlink.refunds (
   id              text primary key default gen_random_uuid()::text,

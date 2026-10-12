@@ -4,7 +4,7 @@ import { FEES, formatMYR } from "@/lib/constants";
 export const metadata = {
   title: "Fees & Pricing · Jomlink",
   description:
-    "Transparent Jomlink fees: a refundable 10% posting deposit (less a RM10 listing fee on cancellation), full reward settlement on Linker acceptance, a 10% Linker service fee, and a 7-day escrow release window. No hidden charges.",
+    "Transparent Jomlink fees: a refundable 10% posting deposit (less a RM10 listing fee on cancellation), full reward settlement on Linker acceptance, a 10% Linker service fee, a 7-day escrow release window, and free bank withdrawals. No hidden charges.",
 };
 
 export default function FeesPage() {
@@ -78,6 +78,19 @@ export default function FeesPage() {
           <strong className="text-foreground">{FEES.RELEASE_WAIT_DAYS} days</strong>{" "}
           after the connection is marked complete. This window gives both parties time
           to raise a dispute before funds move.
+        </p>
+      </InfoSection>
+
+      <InfoSection title="Withdrawals">
+        <p>
+          Your wallet balance (top-ups, refunds and released rewards) can be withdrawn
+          to your bank account. Save your bank details in the{" "}
+          <strong className="text-foreground">Wallet</strong>, request an amount, and an
+          administrator transfers it to your account. There is no withdrawal fee.
+        </p>
+        <p className="text-sm">
+          The balance is only deducted once the transfer is marked paid, so a pending
+          request does not remove funds from your wallet.
         </p>
       </InfoSection>
 

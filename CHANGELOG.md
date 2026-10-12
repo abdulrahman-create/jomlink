@@ -10,6 +10,69 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates are ISO
 
 ---
 
+## [Refinements] — 2026-10-12 · Optional proposal reward, escrow payout visibility & bank withdrawals
+
+> Three ship-blocking gaps closed after Phase 13: Linkers are **no longer forced
+> to invent a reward**, both parties can now **see what the Linker will be paid
+> and when**, and members can **withdraw their wallet balance to a bank account**
+> (admin-settled). ⚠️ **Requires migration** `supabase/phase-payout-request.sql` —
+> **not yet applied**. `npm test` **67 passing**.
+
+### Added
+- **Bank payout requests** — both Seekers and Linkers can now request a
+  withdrawal of their available wallet balance to a bank account; an admin
+  settles it from `/admin/transactions?tab=requests`.
+  - New member action file `src/app/actions/payouts.ts`:
+    `updateBankDetailsAction` (bank name / account no / holder, validated) and
+    `requestPayoutAction` (requires bank on file, amount ≤ balance, one open
+    request at a time).
+  - New admin action `markPayoutPaidAction` (perm `finance:payout`) in
+    `src/app/actions/admin.ts` — completes the `WITHDRAWAL` transaction + ledger
+    movement (`wallet:{id} → external:payout`), flips the payout row to `PAID`,
+    audits `PAYOUT_PAID`, notifies the member. Idempotent on already-paid rows.
+  - New wallet UI `src/app/dashboard/wallet/payout-request-panel.tsx` (bank form
+    + withdraw form + pending-request state), placed **under the balance** so it
+    is visible without scrolling.
+  - New admin tab **Withdrawal requests** (`?tab=requests`) +
+    `src/app/admin/transactions/mark-paid-button.tsx`.
+- **Payout visibility for Linkers** — a new **Reward & payout** card on the
+  connection page shows the reward held in escrow, the Linker's **net take-home**
+  (reward − 10% service fee), and the **release state** (paid / scheduled release
+  date / held by dispute / refunded / "set on completion"). The wallet gained an
+  **Incoming payouts** tile (net, next release date).
+- **New query helpers** in `src/lib/queries.ts`: `getPayoutById`, `updatePayout`,
+  `listPendingPayoutRequestsAdmin` (joins member names + bank details),
+  `updateBankDetails`.
+- **New audit actions**: `PAYOUT_REQUESTED`, `PAYOUT_PAID`.
+- **Schema (needs migration)**: `users.bank_name` / `bank_account_no` /
+  `bank_account_name`; `payouts.requested_at` / `approved_by` / `note`; new
+  `WITHDRAWAL` transaction type. See `supabase/phase-payout-request.sql`.
+
+### Changed
+- **The proposed reward is now OPTIONAL** on a Linker proposal. Leaving the
+  field blank defers to the Seeker's advertised reward (`opportunity.offer_amount`)
+  — the Seeker sets the reward, the Linker only overrides it with an explicit
+  figure. The fallback is resolved **server-side** (blank/omitted → seeker's
+  reward, then re-checked against the RM100 floor), so the stored
+  `proposed_reward` is always a real number and the downstream negotiation math
+  is unaffected.
+- **Wallet "Withdraw to bank" relocated** — moved from the bottom of the tall
+  right-hand column into the wide left column, directly beneath the Balance /
+  Pending escrow tiles, removing the empty gap and the scroll-to-find problem.
+- Wallet **"Payouts" list** now distinguishes **Bank withdrawal** vs **Reward
+  payout** and shows paid dates; `getWalletBalance` and the wallet page treat
+  `WITHDRAWAL` as an **OUT** so the balance drops after payment.
+
+### Fixed
+- Merely cosmetic in isolation, but structural: the withdrawal flow **never
+  drained the wallet on request** — the debit happens only at admin settlement,
+  so an un-actioned request cannot silently remove funds.
+
+> Docs updated: `phase-04-proposals.md`, `phase-05-transactions.md`,
+> `phase-08-dashboard.md`, `PROJECT-TRACKING.md`.
+
+---
+
 ## [Phase 13] — 2026-10-12 · Appointments, track records & deadline warnings
 
 > Appointment notifications, rejection recovery, appointment **track records**

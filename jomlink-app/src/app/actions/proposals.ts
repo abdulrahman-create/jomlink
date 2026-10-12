@@ -24,10 +24,19 @@ const ProposalSchema = z.object({
   proposedTarget: z.string().max(160).optional().or(z.literal("")),
   proposedMethod: z.string().max(500).optional().or(z.literal("")),
   proposedDeliverable: z.string().min(10, "Describe what you will deliver").max(2000),
-  proposedReward: z.coerce
-    .number()
-    .min(MIN_REWARD, `Proposed reward must be at least ${formatMYR(MIN_REWARD)}`)
-    .max(1_000_000_000),
+  // The proposed reward is OPTIONAL. When the Linker leaves it blank the reward
+  // is taken from the Seeker's opportunity (the advertised `offer_amount`) — the
+  // Seeker sets the reward, the Linker opts in. A blank/"0" value is resolved to
+  // the Seeker's offer below, so the stored proposal always carries a real number
+  // and never overrides the Seeker with an empty ask.
+  proposedReward: z.preprocess(
+    (v) => (v === "" || v === null || v === undefined ? undefined : v),
+    z.coerce
+      .number()
+      .min(MIN_REWARD, `Proposed reward must be at least ${formatMYR(MIN_REWARD)}`)
+      .max(1_000_000_000)
+      .optional()
+  ),
   proposedDeadline: z.coerce.date().optional(),
   remarks: z.string().max(1000).optional().or(z.literal("")),
   isTargetSubstitution: z.boolean().optional(),
@@ -82,6 +91,19 @@ export async function submitProposalAction(
   const d = parsed.data;
   const isSubstitution = d.isTargetSubstitution ?? false;
 
+  // Resolve the reward. When the Linker left it blank, defer to the Seeker's
+  // advertised reward so the Linker is NOT forced to propose a figure (the
+  // Seeker's offer stands). The floor is re-checked here because the fallback
+  // comes from the opportunity, not the (already-min-validated) form value.
+  const resolvedReward = d.proposedReward ?? Number(opp.offer_amount);
+  if (!Number.isFinite(resolvedReward) || resolvedReward < MIN_REWARD) {
+    return {
+      error: `This opportunity's reward (${formatMYR(
+        Number(opp.offer_amount) || 0
+      )}) is below the platform minimum, so a proposal cannot be submitted.`,
+    };
+  }
+
   // Enforce substitution reason when flagged.
   if (isSubstitution && !d.substitutionReason) {
     return {
@@ -104,7 +126,7 @@ export async function submitProposalAction(
     proposed_target: d.proposedTarget || null,
     proposed_method: d.proposedMethod || null,
     proposed_deliverable: d.proposedDeliverable,
-    proposed_reward: d.proposedReward,
+    proposed_reward: resolvedReward,
     proposed_deadline: d.proposedDeadline ? d.proposedDeadline.toISOString() : null,
     remarks: d.remarks || null,
     is_target_substitution: isSubstitution,
@@ -122,7 +144,7 @@ export async function submitProposalAction(
       title: existing
         ? "A Linker resubmitted their proposal"
         : "New proposal received",
-      body: `${d.proposedDeliverable.slice(0, 120)} — ${formatMYR(d.proposedReward)}`,
+      body: `${d.proposedDeliverable.slice(0, 120)} — ${formatMYR(resolvedReward)}`,
       data: { opportunityId: opp.id, proposalId: proposal?.id },
     });
 

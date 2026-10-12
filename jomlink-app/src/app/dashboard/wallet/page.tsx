@@ -6,11 +6,15 @@ import {
   getTransactionsByUser,
   getPayoutsByRecipient,
   getRefundsByRecipient,
+  getConnectionsByUser,
+  getUserById,
 } from "@/lib/queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/constants";
+import { computeFunding } from "@/lib/funding";
 import { TopUpForm } from "./top-up-form";
+import { PayoutRequestPanel } from "./payout-request-panel";
 import type {
   TransactionRow,
   PayoutRow,
@@ -30,6 +34,7 @@ const TX_TYPE_LABEL: Record<string, string> = {
   PAYOUT: "Payout",
   WALLET_CREDIT: "Wallet top-up",
   WALLET_DEBIT: "Wallet debit",
+  WITHDRAWAL: "Bank withdrawal",
 };
 
 function money(n: number | null | undefined) {
@@ -62,10 +67,12 @@ export default async function WalletPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [transactions, payouts, refunds] = await Promise.all([
+  const [transactions, payouts, refunds, myConnections, userRow] = await Promise.all([
     getTransactionsByUser(user.id),
     getPayoutsByRecipient(user.id),
     getRefundsByRecipient(user.id),
+    getConnectionsByUser(user.id),
+    getUserById(user.id),
   ]);
 
   // Balance counts SETTLED money only. A top-up is created as PENDING before the
@@ -89,7 +96,8 @@ export default async function WalletPage() {
       t.type === "LISTING_FEE" ||
       t.type === "ACTIVATION_FEE" ||
       t.type === "LINKER_SERVICE_FEE" ||
-      t.type === "WALLET_DEBIT"
+      t.type === "WALLET_DEBIT" ||
+      t.type === "WITHDRAWAL"
       ? sum + Number(t.amount || 0)
       : sum;
   }, 0);
@@ -116,6 +124,49 @@ export default async function WalletPage() {
     .filter((p: PayoutRow) => p.status !== "RELEASED" && p.status !== "COMPLETED")
     .reduce((sum: number, p: PayoutRow) => sum + Number(p.net_amount || 0), 0);
 
+  // Linker earnings awaiting release. A Linker is paid the escrowed reward of
+  // each connection they won, less the platform service fee. Those figures are
+  // not yet `payouts` rows (a payout is only created at release), so sum them
+  // from the connections themselves and note the next scheduled release date.
+  // This is what lets a Linker see "how much I will receive, and when".
+  const incomingConnections = (
+    myConnections as {
+      status?: string | null;
+      release_status?: string | null;
+      agreed_reward?: number | null;
+      auto_release_at?: string | null;
+      opportunities?: { offer_amount?: number | null } | null;
+    }[]
+  ).filter((c) => {
+    const rs = (c.release_status ?? "").toUpperCase();
+    // Only money still on its way: not yet released, not refunded, not void,
+    // and no open dispute holding it.
+    return (
+      c.status !== "DISPUTED" &&
+      c.status !== "FAILED" &&
+      rs !== "RELEASED" &&
+      rs !== "REFUNDED" &&
+      rs !== "VOID" &&
+      rs !== "HELD"
+    );
+  });
+  const incomingPayoutTotal = incomingConnections.reduce((sum, c) => {
+    const reward = Number(c.agreed_reward ?? c.opportunities?.offer_amount ?? 0);
+    return sum + computeFunding(reward).linkerPayout;
+  }, 0);
+  const nextReleaseAt = incomingConnections
+    .map((c) => c.auto_release_at)
+    .filter((d): d is string => !!d)
+    .sort()[0] ?? null;
+
+  // A pending bank-withdrawal request (if any) awaiting admin payment. The
+  // wallet is debited only at settlement, so this is displayed separately from
+  // the balance rather than subtracted from it.
+  const pendingRequest = (payouts as PayoutRow[]).find(
+    (p) => p.status === "PENDING" && p.method === "BANK_TRANSFER"
+  );
+  const pendingRequestAmount = pendingRequest ? Number(pendingRequest.net_amount) : null;
+
   return (
     <div className="space-y-6">
       <div>
@@ -126,59 +177,91 @@ export default async function WalletPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2">
+        {/* Left (2/3): the money the member cares about first — balance +
+            withdraw, so the withdrawal panel sits above the fold instead of
+            being buried at the bottom of a tall right-hand column. */}
+        <div className="space-y-4 lg:col-span-2">
           <div className="grid gap-4 sm:grid-cols-2">
-        <Card className="min-w-0 overflow-hidden">
-          <CardContent className="min-w-0 p-5">
-            <p className="flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
-              <Wallet className="h-4 w-4 shrink-0" aria-hidden="true" /> Balance
-            </p>
-            <p className="mt-1 text-xl font-bold tabular-nums leading-tight break-words sm:text-2xl">
-              {money(balance)}
-            </p>
-            {pendingTopUps > 0 && (
-              <p className="mt-0.5 text-xs text-warning">
-                {money(pendingTopUps)} top-up pending
-              </p>
-            )}
-          </CardContent>
-        </Card>
-        <Card className="min-w-0 overflow-hidden">
-          <CardContent className="min-w-0 p-5">
-            <p className="flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
-              <Coins className="h-4 w-4 shrink-0 text-warning" aria-hidden="true" /> Pending escrow
-            </p>
-            <p className="mt-1 text-xl font-bold tabular-nums leading-tight break-words text-warning sm:text-2xl">
-              {money(pendingEscrow)}
-            </p>
-            {pendingPayouts > 0 && (
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {money(pendingPayouts)} payout pending
-              </p>
-            )}
-          </CardContent>
-        </Card>
+            <Card className="min-w-0 overflow-hidden">
+              <CardContent className="min-w-0 p-5">
+                <p className="flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
+                  <Wallet className="h-4 w-4 shrink-0" aria-hidden="true" /> Balance
+                </p>
+                <p className="mt-1 text-xl font-bold tabular-nums leading-tight break-words sm:text-2xl">
+                  {money(balance)}
+                </p>
+                {pendingTopUps > 0 && (
+                  <p className="mt-0.5 text-xs text-warning">
+                    {money(pendingTopUps)} top-up pending
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+            <Card className="min-w-0 overflow-hidden">
+              <CardContent className="min-w-0 p-5">
+                <p className="flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
+                  <Coins className="h-4 w-4 shrink-0 text-warning" aria-hidden="true" /> Pending escrow
+                </p>
+                <p className="mt-1 text-xl font-bold tabular-nums leading-tight break-words text-warning sm:text-2xl">
+                  {money(pendingEscrow)}
+                </p>
+                {pendingPayouts > 0 && (
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {money(pendingPayouts)} payout pending
+                  </p>
+                )}
+              </CardContent>
+            </Card>
           </div>
+
+          {/* Withdraw to bank — promoted under the balance so it is visible
+              without scrolling. */}
+          <PayoutRequestPanel
+            balance={balance}
+            bankName={userRow?.bank_name ?? null}
+            bankAccountNo={userRow?.bank_account_no ?? null}
+            bankAccountName={userRow?.bank_account_name ?? null}
+            pendingRequestAmount={pendingRequestAmount}
+          />
         </div>
 
-        {/* Top-up panel */}
+        {/* Right (1/3): top-up + secondary stat tiles. */}
         <div className="space-y-4">
           <Suspense fallback={<div className="h-72 animate-pulse rounded-xl bg-muted" />}>
             <TopUpForm />
           </Suspense>
-          <Card className="min-w-0 overflow-hidden">
-            <CardContent className="min-w-0 p-5">
-              <p className="flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
-                <Coins className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" /> Total topped up
-              </p>
-              <p className="mt-1 text-xl font-bold tabular-nums leading-tight break-words sm:text-2xl">
-                {money(totalToppedUp)}
-              </p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Lifetime wallet credits
-              </p>
-            </CardContent>
-          </Card>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+            <Card className="min-w-0 overflow-hidden">
+              <CardContent className="min-w-0 p-5">
+                <p className="flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
+                  <Coins className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" /> Total topped up
+                </p>
+                <p className="mt-1 text-xl font-bold tabular-nums leading-tight break-words sm:text-2xl">
+                  {money(totalToppedUp)}
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Lifetime wallet credits
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="min-w-0 overflow-hidden">
+              <CardContent className="min-w-0 p-5">
+                <p className="flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
+                  <Clock className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" /> Incoming payouts
+                </p>
+                <p className="mt-1 text-xl font-bold tabular-nums leading-tight break-words text-primary sm:text-2xl">
+                  {money(incomingPayoutTotal)}
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {incomingPayoutTotal > 0
+                    ? nextReleaseAt
+                      ? `Net of service fee · next release ${formatDate(nextReleaseAt)}`
+                      : "Net of service fee · releases when work is verified complete"
+                    : "No rewards awaiting release"}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
 
@@ -267,19 +350,27 @@ export default async function WalletPage() {
               <p className="text-sm text-muted-foreground">No payouts yet.</p>
             ) : (
               <ul className="divide-y divide-border">
-                {payouts.map((p: PayoutRow) => (
-                  <li key={p.id} className="flex items-center justify-between py-3">
-                    <div>
-                      <p className="text-sm font-semibold">{formatDate(p.created_at)}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Fee {money(p.service_fee)} · Net {money(p.net_amount)}
-                      </p>
-                    </div>
-                    <Badge variant={p.status === "COMPLETED" ? "success" : "warning"}>
-                      {p.status}
-                    </Badge>
-                  </li>
-                ))}
+                {payouts.map((p: PayoutRow) => {
+                  const isWithdrawal = p.method === "BANK_TRANSFER" && Number(p.service_fee) === 0;
+                  const done = p.status === "COMPLETED" || p.status === "PAID" || p.status === "RELEASED";
+                  return (
+                    <li key={p.id} className="flex items-center justify-between py-3">
+                      <div>
+                        <p className="text-sm font-semibold">
+                          {isWithdrawal ? "Bank withdrawal" : "Reward payout"} ·{" "}
+                          {formatDate(p.requested_at ?? p.created_at)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {isWithdrawal
+                            ? `Amount ${money(p.net_amount)}`
+                            : `Fee ${money(p.service_fee)} · Net ${money(p.net_amount)}`}
+                          {done && p.released_at ? ` · paid ${formatDate(p.released_at)}` : ""}
+                        </p>
+                      </div>
+                      <Badge variant={done ? "success" : "warning"}>{p.status}</Badge>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </CardContent>

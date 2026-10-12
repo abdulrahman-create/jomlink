@@ -27,5 +27,11 @@ We build **one phase at a time**. Before starting a phase, read its doc.
 When a phase's *Definition of Done* is met, mark it complete in
 `00-project-plan.md` and move to the next.
 
+> **Post-phase refinements** land as dated *Update* sections inside the relevant
+> phase doc (and a `CHANGELOG.md` entry) rather than new phase numbers. Recent
+> ones: **2026-10-12** — optional proposal reward (`phase-04-proposals.md`),
+> escrow payout visibility + bank withdrawal requests (`phase-05-transactions.md`,
+> `phase-08-dashboard.md`, `phase-07-admin.md`).
+
 > Source of truth for the product: `../JOMLINK PLATFORM BLUEPRINT v1.md`
 > (kept at the workspace root).

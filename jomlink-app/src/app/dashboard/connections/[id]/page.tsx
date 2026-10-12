@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Calendar, ClipboardCheck, Sparkles, Scale, CalendarClock, MessageSquare, Paperclip, Clock, History, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Calendar, ClipboardCheck, Sparkles, Scale, CalendarClock, MessageSquare, Paperclip, Clock, History, AlertTriangle, Wallet, Coins } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
 import {
   getConnectionById,
@@ -17,7 +17,8 @@ import {
 } from "@/lib/queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { formatDate } from "@/lib/constants";
+import { formatDate, formatMYR, FEES } from "@/lib/constants";
+import { computeFunding } from "@/lib/funding";
 import { isConnectionOpen } from "@/lib/status";
 import { deadlineProximity, daysUntil } from "@/lib/deadline-warnings";
 import type { AppointmentRow, ConnectionEvidenceRow, ReviewRow, OpportunityDeadlineRow, LinkerFlagRow, ProgressReportRow } from "@/lib/jomlink-types";
@@ -109,6 +110,32 @@ export default async function ConnectionDetailPage({
       ? daysUntil((deadline as OpportunityDeadlineRow).accepted_date!)
       : null;
 
+  // ── Reward & payout (what the Linker receives, and when) ────────────────────
+  // The reward is settled from the Seeker's wallet into escrow when a Linker is
+  // selected (`agreed_reward`, falling back to the opportunity's advertised
+  // reward). The Linker is paid this reward less the platform service fee; a
+  // 7-day release window runs from completion before it auto-releases. This card
+  // makes both figures concrete so the Linker always knows their take-home and
+  // the date it lands in their wallet — not just that "escrow" exists.
+  const rewardAmount = Number(conn.agreed_reward ?? opp.offer_amount ?? 0);
+  const funding = computeFunding(rewardAmount);
+  const serviceFeeRatePct = Math.round(FEES.LINKER_SERVICE_FEE_RATE * 100);
+
+  // Where is the money in its lifecycle?
+  //   RELEASED / REFUNDED → the escrow has already left the holding account
+  //                         (paid to the Linker, or returned to the Seeker).
+  //   HELD / DISPUTED     → frozen by an open dispute.
+  //   FAILED / VOID       → the job failed; the reward is refunded, not paid.
+  //   else                → still held; `auto_release_at` (set at completion)
+  //                         is the date it is scheduled to land.
+  const releaseStatus = (conn.release_status ?? "").toUpperCase();
+  const released = releaseStatus === "RELEASED";
+  const refunded = releaseStatus === "REFUNDED" || releaseStatus === "VOID";
+  const disputed = conn.status === "DISPUTED" || releaseStatus === "HELD";
+  const failed = conn.status === "FAILED";
+  const scheduled = !released && !refunded && !disputed && !failed;
+  const releaseDate = conn.auto_release_at ? formatDate(conn.auto_release_at) : null;
+
   return (
     <div className="space-y-6">
       <Link
@@ -130,6 +157,104 @@ export default async function ConnectionDetailPage({
           {conn.status}
         </Badge>
       </div>
+
+      {/* Reward & payout — what the Linker will receive, and the date it lands.
+          The reward is settled into escrow on selection and paid out on verified
+          completion, less the platform service fee. Surfacing the net figure and
+          the release date here means neither side has to guess. */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Wallet className="h-4 w-4 text-primary" aria-hidden="true" /> Reward &amp; payout
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Reward held in escrow
+              </p>
+              <p className="mt-1 text-xl font-bold tabular-nums text-foreground">
+                {formatMYR(funding.reward)}
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Funded by the Seeker when a Linker is selected.
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {isLinker ? "You receive" : "Linker receives"}
+              </p>
+              <p className="mt-1 text-xl font-bold tabular-nums text-primary">
+                {formatMYR(funding.linkerPayout)}
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                After the {serviceFeeRatePct}% service fee (
+                {formatMYR(funding.linkerServiceFee)}).
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 flex items-start gap-2 rounded-md border border-border bg-muted/40 p-3">
+            <Coins className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+            <div className="text-xs">
+              {failed || refunded ? (
+                <>
+                  <p className="font-semibold text-foreground">
+                    This connection did not complete
+                  </p>
+                  <p className="mt-0.5 text-muted-foreground">
+                    The reward is refunded to the Seeker, not paid out to the
+                    Linker.
+                  </p>
+                </>
+              ) : released ? (
+                <>
+                  <p className="font-semibold text-foreground">
+                    Paid — released to the Linker&apos;s wallet
+                  </p>
+                  <p className="mt-0.5 text-muted-foreground">
+                    {formatMYR(funding.linkerPayout)} has settled into the wallet.
+                    {releaseDate ? ` Released ${releaseDate}.` : ""}
+                  </p>
+                </>
+              ) : disputed ? (
+                <>
+                  <p className="font-semibold text-foreground">
+                    Payout on hold — dispute under review
+                  </p>
+                  <p className="mt-0.5 text-muted-foreground">
+                    The escrow is frozen while an administrator resolves the
+                    dispute.
+                  </p>
+                </>
+              ) : releaseDate ? (
+                <>
+                  <p className="font-semibold text-foreground">
+                    Scheduled release: {releaseDate}
+                  </p>
+                  <p className="mt-0.5 text-muted-foreground">
+                    The {formatMYR(funding.linkerPayout)} will be released to the
+                    Linker&apos;s wallet on this date, once the work is verified
+                    complete.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="font-semibold text-foreground">
+                    Release date: set on completion
+                  </p>
+                  <p className="mt-0.5 text-muted-foreground">
+                    The reward releases to the Linker&apos;s wallet{" "}
+                    {FEES.RELEASE_WAIT_DAYS} days after the work is marked
+                    complete and verified.
+                  </p>
+                </>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Dispute Alert Banner */}
       {(conn.status === "DISPUTED" || dispute) && (

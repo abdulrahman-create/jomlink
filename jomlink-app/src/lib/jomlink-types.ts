@@ -21,6 +21,9 @@ export interface JomlinkUserRow {
   biometric_consent: boolean;
   biometric_consent_at: string | null;
   biometric_consent_version: string | null;
+  bank_name: string | null;
+  bank_account_no: string | null;
+  bank_account_name: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -181,6 +184,9 @@ export interface PayoutRow {
   method: string | null;
   status: string;
   released_at: string | null;
+  requested_at: string | null;
+  approved_by: string | null;
+  note: string | null;
   created_at: string;
 }
 

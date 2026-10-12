@@ -84,3 +84,36 @@
 - Negotiation covers reward, target, deliverable, connection method, appointment conditions, and acceptable alternatives.
 - The **task deadline is negotiated separately** through the deadline-setting step (§5.6.1, Phase 6) so it always has its own timestamped record. Deadline is listed here as a negotiable topic, but its **acceptance is recorded by the deadline module**, not the proposal thread.
 - Once terms are locked and the deadline is accepted, the Opportunity leaves this phase and enters execution (progress report thread, Phase 6).
+
+---
+
+## Update — 2026-10-12 · The proposed reward is OPTIONAL
+
+**Problem.** The proposal form forced the Linker to enter a reward
+(`Proposed reward (MYR) *`, zod `.min(FEES.MIN_OPPORTUNITY_REWARD)`), so a Linker
+who agreed with the Seeker's advertised reward had to retype it — and any figure
+they entered became the basis of negotiation, effectively overriding the Seeker's
+reward by default.
+
+**Rule now.** A Linker is **not** required to propose a reward. Leaving the field
+blank **defers to the Seeker's advertised reward** (`opportunity.offer_amount`).
+The Linker only overrides it by entering an explicit figure.
+
+**Where it lives.**
+- `src/app/actions/proposals.ts` — `ProposalSchema.proposedReward` is now
+  optional (a `z.preprocess` maps blank/`""`/`null` → `undefined`, then
+  `z.coerce.number().min(MIN_REWARD).optional()`). The action resolves
+  `resolvedReward = d.proposedReward ?? Number(opp.offer_amount)` and re-checks
+  the RM 100 floor against the fallback. The stored `proposed_reward` and the
+  notification body use `resolvedReward`.
+- `src/app/opportunities/[id]/apply/proposal-form.tsx` — label `*` → `(optional)`,
+  `required` removed, placeholder shows the Seeker's reward, hint: *"Leave blank
+  to accept the Seeker's reward of RM X."* New `offerAmount` prop.
+- `src/app/opportunities/[id]/apply/page.tsx` — passes
+  `offerAmount={opp.offer_amount}`.
+
+**Why it is safe.** The fallback is resolved **server-side** (the client cannot
+spoof the blank case into an override), and the stored `proposed_reward` is
+**always a real number** — so the downstream negotiation math
+(`agreed_reward ?? latest?.offered_reward ?? proposed_reward`) and the Select
+escrow amount are unchanged.

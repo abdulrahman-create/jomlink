@@ -15,6 +15,11 @@ import {
   createTransaction,
   recordLedgerEntries,
   createRefund,
+  getPayoutById,
+  updatePayout,
+  getUserById,
+  updateTransactionStatus,
+  getWalletBalance,
 } from "@/lib/queries";
 import { accounts, doubleEntry } from "@/lib/ledger";
 import { chargePostingDeposit } from "@/lib/posting";
@@ -111,6 +116,86 @@ export async function updateMemberRoleAction(formData: FormData) {
 
   revalidatePath("/admin/members");
   revalidatePath("/admin");
+}
+
+// ── Payout settlement (member bank withdrawals) ──────────────
+
+/**
+ * Mark a pending member withdrawal request as PAID. The member's wallet is
+ * debited here (a `WITHDRAWAL` transaction + a `wallet → external:payout`
+ * ledger movement) rather than at request time, so an un-actioned request never
+ * drains the balance. Admin action; requires the finance permission.
+ */
+export async function markPayoutPaidAction(formData: FormData) {
+  const admin = await requireAdmin("finance:payout");
+  const payoutId = formData.get("payoutId") as string;
+  if (!payoutId) throw new Error("Payout ID is required");
+
+  const payout = await getPayoutById(payoutId);
+  if (!payout) throw new Error("Payout request not found");
+  if (payout.status === "PAID") {
+    // Idempotent: already settled, nothing to do (e.g. double-click).
+    revalidatePath("/admin/transactions");
+    return;
+  }
+  if (payout.status !== "PENDING") {
+    throw new Error("Only pending payout requests can be marked paid");
+  }
+
+  const member = await getUserById(payout.recipient_id);
+  if (!member) throw new Error("Member not found for this payout");
+
+  // Affordability: the wallet must cover the withdrawal at settlement time.
+  const balance = await getWalletBalance(payout.recipient_id);
+  if (balance < Number(payout.net_amount)) {
+    throw new Error(
+      `Insufficient wallet balance to pay this request (balance RM${balance.toFixed(
+        2
+      )}, requested RM${Number(payout.net_amount).toFixed(2)}).`
+    );
+  }
+
+  const amount = Number(payout.net_amount);
+
+  // 1) Complete the anchored WITHDRAWAL transaction (created at request time).
+  await updateTransactionStatus(payout.transaction_id, "COMPLETED");
+
+  // 2) Ledger: member wallet → external payout account (money leaves the wallet).
+  await recordLedgerEntries(payout.transaction_id, [
+    ...doubleEntry(accounts.wallet(payout.recipient_id), "external:payout", amount),
+  ]);
+
+  // 3) Mark the payout settled.
+  await updatePayout(payoutId, {
+    status: "PAID",
+    released_at: new Date().toISOString(),
+    approved_by: admin.user.id,
+  });
+
+  await recordAuditLog({
+    adminId: admin.user.id,
+    action: AUDIT_ACTIONS.PAYOUT_PAID,
+    entity: "PAYOUT",
+    entityId: payoutId,
+    details: {
+      recipientId: payout.recipient_id,
+      amount,
+      paidBy: admin.user.email,
+    },
+  });
+
+  await notify({
+    userId: payout.recipient_id,
+    type: "PAYOUT_PAID",
+    title: "Withdrawal paid",
+    body: `Your withdrawal of RM${amount.toFixed(
+      2
+    )} has been transferred to your bank account.`,
+    data: { payoutId, amount },
+  });
+
+  revalidatePath("/admin/transactions");
+  revalidatePath("/dashboard/wallet");
 }
 
 // ── Opportunity Moderation Actions ───────────────────────────

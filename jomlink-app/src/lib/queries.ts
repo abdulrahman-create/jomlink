@@ -749,7 +749,8 @@ export async function getWalletBalance(userId: string): Promise<number> {
       t.type === "LISTING_FEE" ||
       t.type === "ACTIVATION_FEE" ||
       t.type === "LINKER_SERVICE_FEE" ||
-      t.type === "WALLET_DEBIT"
+      t.type === "WALLET_DEBIT" ||
+      t.type === "WITHDRAWAL"
       ? sum + Number(t.amount || 0)
       : sum;
   }, 0);
@@ -823,6 +824,99 @@ export async function getPayoutsByRecipient(recipientId: string) {
     .order("created_at", { ascending: false });
   if (error) throw error;
   return data ?? [];
+}
+
+export async function getPayoutById(id: string): Promise<PayoutRow | null> {
+  const { data, error } = await sc()
+    .from("payouts")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as PayoutRow | null) ?? null;
+}
+
+export async function updatePayout(
+  id: string,
+  values: Record<string, unknown>
+): Promise<PayoutRow | null> {
+  const { data, error } = await sc()
+    .from("payouts")
+    .update(values)
+    .eq("id", id)
+    .select("*")
+    .maybeSingle();
+  if (error) throw error;
+  return (data as PayoutRow | null) ?? null;
+}
+
+/**
+ * Bank payout requests awaiting admin settlement (status PENDING).
+ * A member request is a payout row with method BANK_TRANSFER that has not yet
+ * been released. Used by the admin payout queue.
+ */
+export async function listPendingPayoutRequestsAdmin(limit = 100) {
+  const { data, error } = await sc()
+    .from("payouts")
+    .select("*")
+    .eq("status", "PENDING")
+    .order("created_at", { ascending: true })
+    .limit(limit);
+  if (error) throw error;
+  const rows = data ?? [];
+  const names = await resolveUserNames(
+    rows.map((r: { recipient_id: string }) => r.recipient_id)
+  );
+  // Attach each recipient's saved bank account so the admin can transfer without
+  // another lookup. `users` has no FK from payouts, so we fetch them in one query.
+  const recipientIds = Array.from(
+    new Set(rows.map((r: { recipient_id: string }) => r.recipient_id))
+  );
+  let banks = new Map<
+    string,
+    { bank_name: string | null; bank_account_no: string | null; bank_account_name: string | null }
+  >();
+  if (recipientIds.length) {
+    const { data: userRows, error: userErr } = await sc()
+      .from("users")
+      .select("id, bank_name, bank_account_no, bank_account_name")
+      .in("id", recipientIds);
+    if (userErr) throw userErr;
+    banks = new Map(
+      (userRows ?? []).map(
+        (u: {
+          id: string;
+          bank_name: string | null;
+          bank_account_no: string | null;
+          bank_account_name: string | null;
+        }) => [u.id, u]
+      )
+    );
+  }
+  return rows.map((r: { recipient_id: string }) => ({
+    ...r,
+    users: names.get(r.recipient_id) ?? null,
+    bank: banks.get(r.recipient_id) ?? null,
+  }));
+}
+
+/** Save the member's bank payout details (one account, reused per request). */
+export async function updateBankDetails(
+  userId: string,
+  values: {
+    bank_name: string;
+    bank_account_no: string;
+    bank_account_name: string;
+  }
+) {
+  const { data, error } = await sc()
+    .from("users")
+    .update(values)
+    .eq("id", userId)
+    .select("*")
+    .maybeSingle();
+  if (error) throw error;
+  return data as JomlinkUserRow | null;
 }
 
 export async function createRefund(values: Record<string, unknown>) {
