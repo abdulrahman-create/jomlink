@@ -1183,6 +1183,28 @@ export async function listOverdueAcceptedDeadlines(): Promise<
   return (data as OpportunityDeadlineRow[]) ?? [];
 }
 
+/**
+ * Accepted deadlines that are still in the FUTURE but fall within the warning
+ * window — the connections that are "running out of time". Used by the
+ * deadline-warning sweep (§5.6.1) to alert both parties before the deadline
+ * passes, rather than only flagging it afterwards.
+ */
+export async function listDeadlinesApproaching(
+  withinDays = 3
+): Promise<OpportunityDeadlineRow[]> {
+  const now = new Date();
+  const horizon = new Date(now.getTime() + withinDays * 24 * 60 * 60 * 1000);
+  const { data, error } = await sc()
+    .from("opportunity_deadlines")
+    .select("*")
+    .eq("status", "ACCEPTED")
+    .gte("accepted_date", now.toISOString())
+    .lte("accepted_date", horizon.toISOString())
+    .order("accepted_date", { ascending: true });
+  if (error) throw error;
+  return (data as OpportunityDeadlineRow[]) ?? [];
+}
+
 export async function getProgressReportsByConnection(
   connectionId: string
 ): Promise<ProgressReportRow[]> {
@@ -1395,14 +1417,16 @@ export async function countFlagsByLinker(linkerId: string): Promise<{
 
 /**
  * Assemble the full evidence of record for a connection (blueprint §9.11.1):
- * the deadline record, the progress report thread, every comment with its
- * immutable revision history, and the flag history.
+ * the deadline record, the appointment track record, the progress report
+ * thread, every comment with its immutable revision history, and the flag
+ * history.
  *
  * Used by the admin dispute review so a resolution rests on what was actually
  * claimed, by whom, and when — not on the current text of a message alone.
  */
 export async function getEvidenceOfRecord(connectionId: string): Promise<{
   deadline: OpportunityDeadlineRow | null;
+  appointments: AppointmentRow[];
   reports: (Omit<ProgressReportRow, "comments"> & {
     comments: (Omit<ProgressReportCommentRow, "revisions"> & {
       revisions: ProgressReportCommentRevisionRow[];
@@ -1410,8 +1434,9 @@ export async function getEvidenceOfRecord(connectionId: string): Promise<{
   })[];
   flags: LinkerFlagRow[];
 }> {
-  const [deadline, reports, flags] = await Promise.all([
+  const [deadline, appointments, reports, flags] = await Promise.all([
     getDeadlineByConnection(connectionId),
+    getAppointmentsByConnection(connectionId),
     getProgressReportsByConnection(connectionId),
     listFlagsByConnection(connectionId),
   ]);
@@ -1429,7 +1454,12 @@ export async function getEvidenceOfRecord(connectionId: string): Promise<{
     })
   );
 
-  return { deadline, reports: hydrated, flags };
+  return {
+    deadline,
+    appointments: appointments as AppointmentRow[],
+    reports: hydrated,
+    flags,
+  };
 }
 
 // ── Reviews / reputation (Phase 6) ──────────────────────────

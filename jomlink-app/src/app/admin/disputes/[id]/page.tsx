@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import {
   ArrowLeft,
   CalendarClock,
+  CalendarCheck,
   MessageSquare,
   History,
   Flag,
@@ -16,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/constants";
 import type {
   OpportunityDeadlineRow,
+  AppointmentRow,
   LinkerFlagRow,
   ProgressReportCommentRevisionRow,
 } from "@/lib/jomlink-types";
@@ -58,9 +60,9 @@ export default async function AdminDisputeDetailPage({
   const record: Awaited<ReturnType<typeof getEvidenceOfRecord>> =
     dispute.connection_id
       ? await getEvidenceOfRecord(dispute.connection_id)
-      : { deadline: null, reports: [], flags: [] };
+      : { deadline: null, appointments: [], reports: [], flags: [] };
 
-  const { deadline, reports, flags } = record;
+  const { deadline, appointments, reports, flags } = record;
   const totalRevisions = reports.reduce(
     (sum, r) => sum + r.comments.reduce((s, c) => s + c.revisions.length, 0),
     0
@@ -133,6 +135,10 @@ export default async function AdminDisputeDetailPage({
           {deadline ? "present" : "none"}
         </Badge>
         <Badge variant="outline">
+          <CalendarCheck className="h-3 w-3" aria-hidden="true" /> Appointments:{" "}
+          {appointments.length}
+        </Badge>
+        <Badge variant="outline">
           <MessageSquare className="h-3 w-3" aria-hidden="true" /> Progress reports:{" "}
           {reports.length}
         </Badge>
@@ -194,6 +200,83 @@ export default async function AdminDisputeDetailPage({
             <p className="text-muted-foreground">
               No deadline was recorded for this connection.
             </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* 1b. Appointment track record — every proposed slot and its outcome */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <CalendarCheck className="h-4 w-4 text-primary" aria-hidden="true" /> Appointment
+            Record
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm">
+          {appointments.length === 0 ? (
+            <p className="text-muted-foreground">
+              No appointment was recorded for this connection.
+            </p>
+          ) : (
+            <>
+              <p className="mb-3 text-xs text-muted-foreground">
+                Every appointment slot proposed on this connection, newest first —
+                who proposed it, the date, and how the counterparty responded. This
+                is the schedule-of-record for the dispute.
+              </p>
+              <ol className="space-y-2">
+                {[...(appointments as AppointmentRow[])].reverse().map((a) => (
+                  <li
+                    key={a.id}
+                    className="rounded-md border border-border bg-muted p-3"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-semibold">
+                        {formatDate(a.date)}
+                        {a.method ? ` · ${a.method}` : ""}
+                      </span>
+                      <Badge
+                        variant={
+                          a.status === "ACKNOWLEDGED"
+                            ? "success"
+                            : a.status === "REJECTED"
+                              ? "destructive"
+                              : "warning"
+                        }
+                      >
+                        {a.status}
+                      </Badge>
+                    </div>
+                    <dl className="mt-2 grid gap-1 sm:grid-cols-2">
+                      {a.location && (
+                        <div>
+                          <dt className="text-xs text-muted-foreground">Location</dt>
+                          <dd>{a.location}</dd>
+                        </div>
+                      )}
+                      {a.target && (
+                        <div>
+                          <dt className="text-xs text-muted-foreground">Target</dt>
+                          <dd>{a.target}</dd>
+                        </div>
+                      )}
+                      {a.remarks && (
+                        <div className="sm:col-span-2">
+                          <dt className="text-xs text-muted-foreground">Remarks</dt>
+                          <dd>{a.remarks}</dd>
+                        </div>
+                      )}
+                    </dl>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Proposed {formatDate(a.created_at)}
+                      {a.updated_at && a.updated_at !== a.created_at
+                        ? ` · Last updated ${formatDate(a.updated_at)}`
+                        : ""}
+                    </p>
+                  </li>
+                ))}
+              </ol>
+            </>
           )}
         </CardContent>
       </Card>

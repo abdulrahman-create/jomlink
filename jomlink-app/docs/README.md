@@ -5,6 +5,7 @@ Phased build plan for the Jomlink business-introductions marketplace.
 | Document | Purpose |
 |----------|---------|
 | `PROJECT-TRACKING.md` | **Start here** — status board, outstanding migrations, gaps, conventions |
+| `../../CHANGELOG.md` | Reverse-chronological record of **what happened when** (repo root) |
 | `00-project-plan.md` | Master plan, decisions, road map, current status |
 | `phase-01-auth.md` | DB migration + registration/login flow |
 | `phase-02-profile.md` | Member profile + relationship declarations |
@@ -18,6 +19,7 @@ Phased build plan for the Jomlink business-introductions marketplace.
 | `phase-10-notifications-nav-guards.md` | Both-party notifications, navigation fixes, evidence upload, workflow guards |
 | `phase-11-match-score-and-data-layer.md` | Match score rewrite, relationship save fix, `jomlink` schema routing |
 | `phase-12-lifecycle-guards-and-money-path.md` | Centralised lifecycle state machine, notification deep-links, Linker negotiation UI, escrow/affordability fixes |
+| `phase-13-appointments-and-deadline-warnings.md` | Appointment notifications + track records, rejection recovery, connection-list link, running-out-of-time deadline warnings |
 
 ## How to use
 

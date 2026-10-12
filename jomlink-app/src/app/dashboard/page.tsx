@@ -212,15 +212,26 @@ export default async function DashboardPage() {
         </CardContent>
       </Card>
 
-      {/* Notifications nudge */}
+      {/* Notifications nudge - high-contrast so it can't be missed */}
       {unreadNotifications > 0 && (
-        <Card className="border-primary/30 bg-primary-soft/40">
+        <Card className="border-primary bg-primary text-white shadow-lg ring-1 ring-primary/60">
           <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
-            <p className="text-sm font-medium text-foreground">
-              You have {unreadNotifications} unread notification
-              {unreadNotifications === 1 ? "" : "s"}.
+            <p className="flex items-center gap-3 text-sm font-semibold">
+              <span className="relative flex h-3 w-3 shrink-0">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75" />
+                <span className="relative inline-flex h-3 w-3 rounded-full bg-white" />
+              </span>
+              <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-white px-2 text-sm font-bold text-primary">
+                {unreadNotifications}
+              </span>
+              unread notification
+              {unreadNotifications === 1 ? "" : "s"}
             </p>
-            <Button asChild variant="outline" size="sm">
+            <Button
+              asChild
+              size="sm"
+              className="bg-white font-semibold text-primary hover:bg-white/90"
+            >
               <Link href="/dashboard/notifications">View notifications</Link>
             </Button>
           </CardContent>

@@ -40,9 +40,11 @@ const emptyAppt: AppointmentState = {};
 export function ProposeAppointment({
   connectionId,
   withError,
+  submitLabel = "Propose appointment",
 }: {
   connectionId: string;
   withError: boolean;
+  submitLabel?: string;
 }) {
   const router = useRouter();
   const [state, action, pending] = useActionState<AppointmentState, FormData>(
@@ -93,7 +95,7 @@ export function ProposeAppointment({
         ) : (
           <CalendarPlus className="h-4 w-4" aria-hidden="true" />
         )}
-        Propose appointment
+        {submitLabel}
       </Button>
     </form>
   );

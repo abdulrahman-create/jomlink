@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Calendar, ClipboardCheck, Sparkles, Scale, CalendarClock, MessageSquare, Paperclip, Clock } from "lucide-react";
+import { ArrowLeft, Calendar, ClipboardCheck, Sparkles, Scale, CalendarClock, MessageSquare, Paperclip, Clock, History, AlertTriangle } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
 import {
   getConnectionById,
@@ -19,6 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/constants";
 import { isConnectionOpen } from "@/lib/status";
+import { deadlineProximity, daysUntil } from "@/lib/deadline-warnings";
 import type { AppointmentRow, ConnectionEvidenceRow, ReviewRow, OpportunityDeadlineRow, LinkerFlagRow, ProgressReportRow } from "@/lib/jomlink-types";
 import {
   ProposeAppointment,
@@ -93,6 +94,21 @@ export default async function ConnectionDetailPage({
     (appointments as AppointmentRow[]).length - 1
   ] ?? null;
 
+  // Running out of time? The deadline is close but the work is still open and
+  // not marked complete — warn both parties before the slot passes (§5.6.1).
+  const hasCompleteReport = (reports as ProgressReportRow[]).some(
+    (r) => r.status === "COMPLETE"
+  );
+  const proximity = deadlineProximity(deadline as OpportunityDeadlineRow | null);
+  const ranOutOfTime =
+    isConnectionOpen(conn.status) &&
+    !hasCompleteReport &&
+    (proximity === "SOON" || proximity === "URGENT");
+  const daysLeft =
+    (deadline as OpportunityDeadlineRow | null)?.accepted_date
+      ? daysUntil((deadline as OpportunityDeadlineRow).accepted_date!)
+      : null;
+
   return (
     <div className="space-y-6">
       <Link
@@ -142,6 +158,37 @@ export default async function ConnectionDetailPage({
 
       {/* Yellow flag — missed commitment (blueprint §5.6.1) */}
       {flag && <YellowFlagBanner reason={(flag as LinkerFlagRow).reason} />}
+
+      {/* Running out of time — deadline close, work not complete (§5.6.1) */}
+      {ranOutOfTime && (
+        <div
+          className={
+            proximity === "URGENT"
+              ? "rounded-xl border border-destructive/50 bg-destructive-bg p-4 text-destructive"
+              : "rounded-xl border border-warning/50 bg-warning-bg p-4 text-warning"
+          }
+        >
+          <div className="flex items-center gap-2 font-semibold">
+            <AlertTriangle className="h-5 w-5" aria-hidden="true" />
+            {proximity === "URGENT"
+              ? "Connection running out of time — deadline is nearly up"
+              : "Connection running out of time"}
+          </div>
+          <p className="mt-1 text-xs leading-relaxed">
+            The accepted deadline falls{" "}
+            {daysLeft === null
+              ? "very soon"
+              : daysLeft <= 0
+                ? "today"
+                : daysLeft === 1
+                  ? "tomorrow"
+                  : `in ${daysLeft} days`}
+            , and the work is not marked complete yet. Deliver the task, post a
+            progress update, or request an extension before the deadline passes —
+            otherwise a missed-commitment flag may be raised.
+          </p>
+        </div>
+      )}
 
       {/* Deadline Setting (blueprint §5.6.1) */}
       <Card>
@@ -273,10 +320,30 @@ export default async function ConnectionDetailPage({
               )}
               <Badge variant="outline">{latestAppointment.status}</Badge>
 
-              {isSeeker &&
-                latestAppointment.status === "PROPOSED" && (
-                  <AppointmentActions appointmentId={latestAppointment.id} />
-                )}
+              {isSeeker && latestAppointment.status === "PROPOSED" && (
+                <AppointmentActions appointmentId={latestAppointment.id} />
+              )}
+
+              {/* Only the Linker opens the schedule. After a rejection they may
+                  propose a fresh date so the connection always has a way forward. */}
+              {isLinker &&
+                latestAppointment.status === "REJECTED" &&
+                (isConnectionOpen(conn.status) ? (
+                  <div className="mt-2 rounded-md border border-dashed border-border p-3">
+                    <p className="text-sm font-medium">
+                      This slot was rejected. Propose a new date to keep things moving.
+                    </p>
+                    <ProposeAppointment
+                      connectionId={conn.id}
+                      withError={false}
+                      submitLabel="Propose new date"
+                    />
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    This connection is closed, so the schedule is final.
+                  </p>
+                ))}
             </div>
           ) : isLinker ? (
             isConnectionOpen(conn.status) ? (
@@ -290,6 +357,51 @@ export default async function ConnectionDetailPage({
             <p className="text-sm text-muted-foreground">
               The Linker will propose an appointment.
             </p>
+          )}
+
+          {/* Track record — the full appointment history. Kept for both parties
+              and any administrator: a disputed connection rests on who proposed
+              what slot, when, and how the counterparty responded. */}
+          {(appointments as AppointmentRow[]).length > 0 && (
+            <div className="mt-4 border-t border-border pt-4">
+              <p className="flex items-center gap-1.5 text-sm font-semibold">
+                <History className="h-4 w-4 text-primary" aria-hidden="true" />
+                Appointment track record
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Every proposed slot and its outcome, newest first. This record is
+                retained as evidence for disputes and proof of delivery.
+              </p>
+              <ol className="mt-3 space-y-2">
+                {[...(appointments as AppointmentRow[])].reverse().map((a) => (
+                  <li
+                    key={a.id}
+                    className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 rounded-md border border-border p-3 text-sm"
+                  >
+                    <span className="font-medium">
+                      {formatDate(a.date)}
+                      {a.method ? ` · ${a.method}` : ""}
+                      {a.location ? ` · ${a.location}` : ""}
+                    </span>
+                    <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Badge
+                        variant={
+                          a.status === "ACKNOWLEDGED"
+                            ? "success"
+                            : a.status === "REJECTED"
+                              ? "destructive"
+                              : "outline"
+                        }
+                        className="text-[10px]"
+                      >
+                        {a.status}
+                      </Badge>
+                      <span>Proposed {formatDate(a.created_at)}</span>
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </div>
           )}
         </CardContent>
       </Card>

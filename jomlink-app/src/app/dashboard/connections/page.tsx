@@ -230,6 +230,16 @@ export default async function ConnectionsPage() {
                       <Badge variant={c.status === "COMPLETED" ? "success" : "secondary"}>
                         {STATUS_LABEL[c.status] ?? c.status}
                       </Badge>
+                      {/* Always offer a direct route to the connection detail
+                          page: the contextual `next` button below can point at
+                          the progress thread instead, which previously left no
+                          way to open the connection itself. */}
+                      <Button asChild variant="ghost" size="sm">
+                        <Link href={"/dashboard/connections/" + c.id}>
+                          <Handshake className="h-3.5 w-3.5" aria-hidden="true" />
+                          Open connection
+                        </Link>
+                      </Button>
                       {/* Only show the standalone thread link when the primary
                           action isn't already pointing at the progress thread
                           (nextAction returns it in the ACCEPTED state). */}
@@ -241,13 +251,9 @@ export default async function ConnectionsPage() {
                           </Link>
                         </Button>
                       )}
-                      {next ? (
+                      {next && (
                         <Button asChild size="sm">
                           <Link href={next.href}>{next.action}</Link>
-                        </Button>
-                      ) : (
-                        <Button asChild variant="outline" size="sm">
-                          <Link href={"/dashboard/connections/" + c.id}>Open</Link>
                         </Button>
                       )}
                     </div>

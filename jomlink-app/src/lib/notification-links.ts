@@ -96,7 +96,11 @@ export function resolveNotificationHref(
     if (connectionId) return `/dashboard/connections/${connectionId}/progress`;
     return "/dashboard/connections";
   }
-  if (type.startsWith("EVIDENCE_") || type.startsWith("DEADLINE_")) {
+  if (
+    type.startsWith("EVIDENCE_") ||
+    type.startsWith("DEADLINE_") ||
+    type.startsWith("APPOINTMENT_")
+  ) {
     if (connectionId) return `/dashboard/connections/${connectionId}`;
     return "/dashboard/connections";
   }

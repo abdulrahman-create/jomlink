@@ -99,6 +99,9 @@ describe("resolveNotificationHref — connection-scoped events", () => {
       "CONNECTION_FAILED",
       "EVIDENCE_SUBMITTED",
       "DEADLINE_REQUESTED",
+      "APPOINTMENT_PROPOSED",
+      "APPOINTMENT_ACKNOWLEDGED",
+      "APPOINTMENT_REJECTED",
     ]) {
       expect(resolveNotificationHref({ type, data: { connectionId: CONN } }, "LINKER")).toBe(
         `/dashboard/connections/${CONN}`

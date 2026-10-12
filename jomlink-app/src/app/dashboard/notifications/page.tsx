@@ -7,6 +7,7 @@ import {
   ChevronRight,
   Handshake,
   Info,
+  AlertTriangle,
   Scale,
   ShieldCheck,
   Wallet,
@@ -33,6 +34,9 @@ export const metadata = { title: "Notifications · Jomlink" };
 /** Maps a notification type to an icon + tone for quick scanning. */
 function iconForType(type: string) {
   if (type.startsWith("DISPUTE")) return { Icon: Scale, tone: "text-destructive" };
+  // Time-pressure warnings need to read as urgent, not as routine activity.
+  if (type.startsWith("DEADLINE_APPROACHING"))
+    return { Icon: AlertTriangle, tone: "text-warning" };
   if (type.startsWith("PAYOUT") || type.startsWith("REFUND") || type.startsWith("TRANSACTION"))
     return { Icon: Wallet, tone: "text-success" };
   if (type.startsWith("ADMIN_MEMBER") || type.startsWith("ADMIN_KYC") || type.startsWith("ADMIN_RELATIONSHIP"))
@@ -44,6 +48,7 @@ function iconForType(type: string) {
     type.startsWith("DEADLINE") ||
     type.startsWith("PROGRESS") ||
     type.startsWith("NEGOTIATION") ||
+    type.startsWith("APPOINTMENT") ||
     type.startsWith("ADMIN_OPPORTUNITY")
   )
     return { Icon: Handshake, tone: "text-primary" };
@@ -104,8 +109,8 @@ export default async function NotificationsPage() {
                       ? "transition-colors group-hover:border-primary/40"
                       : undefined
                     : href
-                      ? "border-primary/30 bg-primary-soft/30 transition-colors group-hover:border-primary/50"
-                      : "border-primary/30 bg-primary-soft/30"
+                      ? "border-l-4 border-primary bg-primary-soft/50 shadow-sm transition-colors group-hover:border-primary group-hover:shadow-md"
+                      : "border-l-4 border-primary bg-primary-soft/50 shadow-sm"
                 }
               >
                 <CardContent className="flex items-start gap-4 p-5">
@@ -119,7 +124,14 @@ export default async function NotificationsPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="font-semibold">{n.title}</p>
-                      {!n.read && <Badge variant="default">New</Badge>}
+                      {!n.read && (
+                        <Badge
+                          variant="default"
+                          className="bg-primary font-semibold uppercase tracking-wide text-white"
+                        >
+                          New
+                        </Badge>
+                      )}
                     </div>
                     {n.body && (
                       <p className="mt-1 text-sm text-muted-foreground">{n.body}</p>

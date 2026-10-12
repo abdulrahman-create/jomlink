@@ -1,14 +1,17 @@
 # Jomlink — Project Tracking Board
 
-**Updated:** 2026-10-06 · **Build status:** ✅ `npm run build` passes · `npx tsc --noEmit` passes · `eslint` clean · `npm test` 39 passing
+**Updated:** 2026-10-12 · **Build status:** ✅ `npm run build` passes · `npx tsc --noEmit` passes · `eslint` clean · `npm test` 67 passing
 
 Single-page status view. Narrative detail lives in `00-project-plan.md` and the
 per-phase docs; this file answers *"where are we, what's next, what's blocking"*
-at a glance.
+at a glance. For a reverse-chronological *"what happened when"*, see
+[`../../CHANGELOG.md`](../../CHANGELOG.md).
 
-> **Most recent work: Phase 12** — lifecycle guards, notification deep-links,
-> Linker negotiation UI, and two money-path fixes. One data issue left for manual
-> resolution (⚠️ row 1 in *Known gaps*).
+> **Most recent work: Phase 13** — appointment notifications, rejection recovery,
+> appointment **track records** (member + admin dispute view), a direct
+> "Open connection" link, and a proactive **running-out-of-time** deadline-warning
+> layer. **No migration required.** One data issue from Phase 12 still needs a
+> product decision (⚠️ row 1 in *Known gaps*).
 
 ---
 
@@ -30,6 +33,7 @@ at a glance.
 | 10 | Notifications + navigation + guards | ✅ Done | `phase-10-notifications-nav-guards.md` |
 | 11 | Match score + relationship save + schema routing | ✅ Done | `phase-11-match-score-and-data-layer.md` |
 | 12 | Lifecycle guards + notification deep-links + money path | ✅ Done | `phase-12-lifecycle-guards-and-money-path.md` |
+| 13 | Appointment notifications + track records + deadline warnings | ✅ Done | `phase-13-appointments-and-deadline-warnings.md` |
 
 **MVP is feature-complete.** Remaining work is production hardening (below).
 
@@ -69,6 +73,23 @@ Two items from earlier phases may still be un-run on an existing database:
 
 ---
 
+## Scheduled jobs (cron-ready routes)
+
+These routes exist and are safe to run repeatedly, but **nothing calls them yet** —
+they must be wired to a scheduler (Vercel cron or a system cron) for the pilot.
+
+| Route | Purpose | Auth | Cadence |
+|-------|---------|------|---------|
+| `GET /api/connections/deadline-sweep` | Warn both parties when an open connection is running out of time and the work is not complete (§5.6.1 / §5.14). New in Phase 13. | `x-reconcile-secret` header (open in local dev) | Daily |
+| `GET /api/payments/toyyibpay/reconcile` | Settle wallet top-ups stuck `PENDING` | `x-reconcile-secret` header | Every ~15 min |
+
+> The deadline-sweep emits **one warning per connection per level per run**; the
+> once-daily cadence is what keeps it from nagging. If you run it more often,
+> persist a `deadline_warnings(connection_id, level, sent_at)` marker for true
+> idempotency (see Phase 13 *Follow-ups*).
+
+---
+
 ## Known gaps & follow-ups
 
 Ordered by risk to the pilot, not by effort.
@@ -77,11 +98,12 @@ Ordered by risk to the pilot, not by effort.
 |---|------|----------|-------|
 | 1 | **Stale escrow: RM2,200 on an RM1,500 opportunity** | 🔴 **Urgent** | Connection `255a7894-afa2-4474-9c67-123e001746d2` is `COMPLETED` and will release **RM2,200** to the Linker; the opportunity's reward is **RM1,500**. Created by the pre-Phase-12 reward bug (escrow took the Linker's opening ask). The fix stops new occurrences but does not correct this row. Needs a product decision. |
 | 2 | **Extension flow needs its migration applied** | 🟠 High | The unilateral-extension bug is **fixed in code** (Linker requests, Seeker accepts/rejects, only acceptance moves the deadline and clears the flag). But `supabase/phase-12-extension-approval.sql` is **not yet applied**, so the extension UI will error until it is run. |
-| 3 | Notification delivery is **in-app only** | 🟡 Medium | `notification_channel` supports EMAIL/SMS/PUSH; no worker sends them. Members must open the app to learn anything. |
+| 3 | Notification delivery is **in-app only** | 🟡 Medium | `notification_channel` supports EMAIL/SMS/PUSH; no worker sends them. Members must open the app to learn anything. The Phase 13 deadline warning is therefore only seen on next visit — email/push would strengthen it. |
+| 3b | **Deadline sweep is not scheduled** | 🟡 Medium | The running-out-of-time route (`/api/connections/deadline-sweep`) exists and is idempotent per run, but no scheduler calls it. Until wired, warnings only appear via the **in-app connection banner** (which works without cron). |
 | 4 | Live payment gateway | 🟡 Medium | ToyyibPay is sandbox-only; production keys + webhook tunnel still needed. |
 | 5 | **Match score trusts self-declared relationships** | 🟡 Medium | A member can claim any relationship and collect up to 26 points. `relationship_verifications` exists in Prisma for exactly this and is unbuilt. Scoring is a signal, not a gate. |
 | 6 | KYC hardening | 🟡 Medium | Status + badge + document upload + admin review exist. No liveness/selfie check, no document expiry, no automated provider. |
-| 7 | Test coverage is **pure logic only** | 🟡 Medium | Phase 12 added `vitest` + 39 tests for `status.ts` and `notification-links.ts`. No DB/action/integration coverage, so the bug class that needs a request context (missing action guards, wrong value reaching escrow) is still only catchable by using the app. |
+| 7 | Test coverage is **pure logic only** | 🟡 Medium | `vitest` now covers `status.ts`, `notification-links.ts`, the extension decision table and the new deadline-warning predicates — **67 tests across 5 files**. Still no DB/action/integration coverage, so the bug class that needs a request context (missing action guards, wrong value reaching escrow) is only catchable by using the app. |
 | 8 | No admin evidence queue | ⚪ Low | Only needed if evidence moderation is actually wanted. Would require an `evidence:write` permission, an `/admin/evidence` page and a review action. The `approved` column is reserved for this. |
 | 9 | Fraud / risk scoring | ⚪ Low | Repeated yellow flags are already recorded and can feed an engine. |
 | 10 | Business accounts, multi-country, multi-currency | ⚪ Low | Architecture-ready, not built. |
@@ -96,6 +118,8 @@ Phase 10 documented the first shape; Phase 11 added a second.
 Four of the five bugs fixed in Phase 10 were invisible in code review and only
 appeared by **using the app**: the UI offered a state the backend never reached,
 or an action at the wrong point in the lifecycle, and the server had no guard.
+Phase 13 added a further three instances of the same shape (appointment
+notifications and the connection-list link).
 
 | Instance | UI offered | Reality |
 |----------|-----------|---------|
@@ -103,6 +127,9 @@ or an action at the wrong point in the lifecycle, and the server had no guard.
 | Extension form on `COMPLETED` | An action on a closed job | No status guard in the action |
 | Review form after reviewing | A form that always errors | Server rejected, UI never checked |
 | Evidence "Pending review" | A verdict that would arrive | No code path ever set `approved` |
+| Appointment proposed (P13) | Nothing for the Seeker | Action wrote no notification — `revalidatePath` is not a notification |
+| Appointment rejected (P13) | No action for either party | Rejected slot became "latest"; propose form gated on *no* appointment |
+| Connections row (P13) | Only "View progress" | "Open connection" rendered only when `nextAction` was null |
 
 **Shape 2 — a confident number computed from data that never arrives.**
 The Phase 11 match score displayed "Good match" for members whose category
@@ -179,9 +206,12 @@ that reached `ACCEPTED` with no funds behind it.
   `00-project-plan.md` when its *Definition of Done* is met.
 - **Every phase is production-build-clean** (`npm run build` passes) before moving on.
 - **Run `npm test` alongside `npm run build`.** Vitest covers pure logic
-  (`src/lib/*.test.ts`) — currently the lifecycle predicates and the notification
-  link resolver. When you add or change a shared rule, extend it: the tests that
-  matter are the ones that fail when a rule is duplicated or reverted.
+  (`src/lib/*.test.ts`) — currently the lifecycle predicates (`status.ts`), the
+  notification link resolver (`notification-links.ts`), the extension decision
+  table (`extensions.ts`) and the deadline-warning predicates
+  (`deadline-warnings.ts`) — **67 tests across 5 files**. When you add or change a
+  shared rule, extend it: the tests that matter are the ones that fail when a rule
+  is duplicated or reverted.
 - **Do not force peer dependencies to install a tool.** `vitest@5` needs
   `@types/node@>=24` while this project pins `^20`; `vitest@^3` was chosen instead
   of `--legacy-peer-deps` or a broad type-dependency bump.
@@ -205,10 +235,19 @@ that reached `ACCEPTED` with no funds behind it.
   proposal rows, so a proposal can still read `Selected`/`Under review` on a
   `COMPLETED` opportunity. Check `isOpportunityTerminal` as well as the
   proposal's own status.
+- **Time-pressure rules live in `src/lib/deadline-warnings.ts` — never inline.**
+  Use `deadlineProximity` / `daysUntil`; the connection banner and the
+  deadline-sweep route must call the same predicate so "running out of time" means
+  one thing (Phase 13). The **reactive** counterpart is the yellow flag
+  (`src/lib/flags.ts`, `isDeadlineMissed`) — that fires *after* a miss; this fires
+  *before*.
 - **Money-moving actions check funds in the action, before writing state.**
   The wallet check is not a UI concern; disabling a button is convenience only.
   Commit the *negotiated* figure (`agreed_reward ?? last counter-offer ??
   proposed_reward`), never the Linker's opening ask.
+- **Appointment proposals are Linker-only** (Phase 13), but a rejected slot is
+  always recoverable — the Linker may propose a new date. Never gate the propose
+  form on "there is no appointment", or a rejection deadlocks the connection.
 - **Privacy by design** — relationship data must never leak personal contacts.
 
 ### Inspecting the database directly

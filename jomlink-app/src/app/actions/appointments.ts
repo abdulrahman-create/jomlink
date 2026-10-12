@@ -7,11 +7,15 @@ import {
   getConnectionById,
   getOpportunityById,
   getAppointmentById,
+  getAppointmentsByConnection,
   createAppointment,
   updateAppointment,
   updateConnection,
 } from "@/lib/queries";
+import { notifyUser } from "@/lib/notify";
+import { formatDate } from "@/lib/constants";
 import { isConnectionOpen } from "@/lib/status";
+import type { AppointmentRow } from "@/lib/jomlink-types";
 
 const AppointmentSchema = z.object({
   date: z.coerce.date(),
@@ -27,7 +31,14 @@ export type AppointmentState = {
   success?: boolean;
 };
 
-/** Linker proposes an appointment for a connection. */
+/**
+ * Propose an appointment for a connection.
+ *
+ * Only the Linker opens the schedule (they own the delivery). After a Seeker
+ * rejects a slot the Linker may propose a fresh date, so a rejection never
+ * leaves the connection with no way forward. We refuse a second proposal while
+ * one is already awaiting a decision, to avoid two competing "current" slots.
+ */
 export async function proposeAppointmentAction(
   prevState: AppointmentState | undefined,
   formData: FormData
@@ -47,6 +58,14 @@ export async function proposeAppointmentAction(
     return {
       error: "This connection is closed, so no new appointment can be proposed.",
     };
+  }
+
+  // Don't stack proposals: one slot must be decided (or rejected) before another
+  // can be put forward.
+  const existing = await getAppointmentsByConnection(conn.id);
+  const latest = (existing as AppointmentRow[])[(existing as AppointmentRow[]).length - 1] ?? null;
+  if (latest && latest.status === "PROPOSED") {
+    return { error: "There is already a proposed appointment awaiting a decision." };
   }
 
   const parsed = AppointmentSchema.safeParse({
@@ -74,6 +93,17 @@ export async function proposeAppointmentAction(
     if (conn.status === "PENDING_ACKNOWLEDGEMENT") {
       await updateConnection(conn.id, { status: "IN_PROGRESS" });
     }
+    // The Seeker must act on this (acknowledge or reject), so the appointment
+    // cannot sit silently on the workspace until they happen to open it.
+    const opp = await getOpportunityById(conn.opportunity_id);
+    await notifyUser(opp?.seeker_id, conn.id, {
+      type: "APPOINTMENT_PROPOSED",
+      title: "The Linker proposed an appointment",
+      body: `${formatDate(parsed.data.date.toISOString())}${
+        parsed.data.location ? ` · ${parsed.data.location}` : ""
+      }`,
+      data: { connectionId: conn.id, date: parsed.data.date.toISOString() },
+    });
     revalidatePath("/dashboard/connections/" + conn.id);
     return { success: true };
   } catch (e: unknown) {
@@ -106,6 +136,22 @@ export async function acknowledgeAppointmentAction(
   const status = decision === "REJECTED" ? "REJECTED" : "ACKNOWLEDGED";
   try {
     await updateAppointment(appointmentId, { status });
+    // Close the loop with the Linker — they need to know the Seeker's decision
+    // before the appointment date arrives.
+    await notifyUser(conn.linker_id, conn.id, {
+      type: `APPOINTMENT_${status}`,
+      title:
+        status === "REJECTED"
+          ? "The Seeker rejected the appointment"
+          : "The Seeker acknowledged the appointment",
+      body:
+        status === "REJECTED"
+          ? `The appointment on ${formatDate(
+              appointment.date
+            )} was rejected. Propose a new date to keep things moving.`
+          : `Appointment on ${formatDate(appointment.date)} was confirmed.`,
+      data: { connectionId: conn.id, appointmentId },
+    });
     revalidatePath("/dashboard/connections/" + conn.id);
     return { success: true };
   } catch (e: unknown) {
