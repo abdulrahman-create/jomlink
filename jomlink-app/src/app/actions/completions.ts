@@ -10,6 +10,10 @@ import {
   getReputationByUserId,
   upsertReputation,
   getDeadlineByConnection,
+  getOpenExtensionByConnection,
+  getExtensionById,
+  createExtension,
+  updateExtension,
 } from "@/lib/queries";
 import { buildReputationValues } from "@/lib/reputation";
 import { clearMissedCommitmentFlag, raiseMissedCommitmentFlag } from "@/lib/flags";
@@ -121,8 +125,16 @@ export async function markConnectionCompleteAction(
   }
 }
 /**
- * Linker requests an extension (extends the auto-release / deadline by days).
- * Seeker approves it (no rejection flow in this phase).
+ * Linker REQUESTS an extension (blueprint §5.14).
+ *
+ * This creates a REQUESTED record only. It deliberately does **not** move the
+ * deadline and does **not** clear the yellow flag — the Seeker decides, via
+ * `acceptExtensionAction` / `rejectExtensionAction`.
+ *
+ * The previous implementation applied the extension immediately and cleared the
+ * Linker's own flag, which let the party the mechanism is meant to hold
+ * accountable decide whether to hold them accountable: a Linker could postpone
+ * their own escrow release and erase their own missed-commitment signal.
  */
 export async function requestExtensionAction(
   prevState: CompletionState | undefined,
@@ -132,38 +144,46 @@ export async function requestExtensionAction(
   if (!user) return { error: "Not authenticated." };
 
   const connectionId = String(formData.get("connectionId") || "");
-  const days = Number(formData.get("days") || 3);
+  const days = Math.max(1, Math.min(30, Number(formData.get("days") || 3)));
+  const reason = String(formData.get("reason") || "").trim() || null;
+
   const conn = connectionId ? await getConnectionById(connectionId) : null;
   if (!conn) return { error: "Connection not found." };
   if (conn.linker_id !== user.id) {
     return { error: "Only the Linker can request an extension." };
   }
   // An extension moves the escrow release date, so it is only meaningful while
-  // the task is still open. Guarded here as well as in the UI: extending a
-  // completed connection would postpone the Linker's own payout on a closed job.
+  // the task is still open.
   if (!isConnectionOpen(conn.status)) {
     return { error: "This connection is closed — an extension cannot be requested." };
   }
 
   try {
-    const base = conn.auto_release_at ?? new Date().toISOString();
-    await updateConnection(conn.id, {
-      auto_release_at: addDays(base, Math.max(1, Math.min(30, days))),
-      release_status: "EXTENDED",
-    });
+    // One live request at a time. The database enforces this too (partial unique
+    // index), but checking here turns a constraint violation into a clear message.
+    const open = await getOpenExtensionByConnection(conn.id);
+    if (open) {
+      return { error: "An extension request is already awaiting the Seeker's decision." };
+    }
 
-    // An accepted extension is the Linker's corrective action for an at-risk
-    // deadline, so it clears the yellow flag (§5.14).
-    await clearMissedCommitmentFlag({
-      connectionId: conn.id,
-      reason: "Extension accepted — deadline extended.",
+    const base = conn.auto_release_at ?? new Date().toISOString();
+    const requestedDeadline = addDays(base, days);
+
+    await createExtension({
+      connection_id: conn.id,
+      requested_by_id: user.id,
+      previous_deadline: conn.auto_release_at ?? null,
+      requested_deadline: requestedDeadline,
+      days_requested: days,
+      reason,
+      status: "REQUESTED",
     });
 
     const opp = await getOpportunityById(conn.opportunity_id);
     await notifyUser(opp?.seeker_id, conn.id, {
       type: "CONNECTION_EXTENSION_REQUESTED",
       title: "The Linker requested an extension",
-      body: `The auto-release date was extended by ${Math.max(1, Math.min(30, days))} day(s).`,
+      body: `Requested ${days} more day(s). Review and accept or reject it.`,
       data: { connectionId: conn.id, days },
     });
 
@@ -172,6 +192,130 @@ export async function requestExtensionAction(
   } catch (e: unknown) {
     console.error("requestExtensionAction error", e);
     return { error: "Could not request an extension." };
+  }
+}
+
+/**
+ * Seeker accepts a pending extension (blueprint §5.14).
+ *
+ * Only now does the deadline actually move, and only now is the yellow flag
+ * cleared — "If accepted, the new deadline becomes the official Opportunity
+ * deadline and the yellow flag is cleared for the original deadline."
+ */
+export async function acceptExtensionAction(
+  prevState: CompletionState | undefined,
+  formData: FormData
+): Promise<CompletionState> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "Not authenticated." };
+
+  const extensionId = String(formData.get("extensionId") || "");
+  const extension = extensionId ? await getExtensionById(extensionId) : null;
+  if (!extension) return { error: "Extension request not found." };
+
+  const conn = await getConnectionById(extension.connection_id);
+  if (!conn) return { error: "Connection not found." };
+  const opp = await getOpportunityById(conn.opportunity_id);
+  if (!opp) return { error: "Opportunity not found." };
+
+  if (opp.seeker_id !== user.id) {
+    return { error: "Only the Seeker can decide on an extension." };
+  }
+  if (extension.status !== "REQUESTED") {
+    return { error: "This extension request has already been decided." };
+  }
+  if (!isConnectionOpen(conn.status)) {
+    return { error: "This connection is closed." };
+  }
+
+  try {
+    await updateExtension(extension.id, {
+      status: "ACCEPTED",
+      responded_by_id: user.id,
+      responded_at: new Date().toISOString(),
+      rejection_reason: null,
+    });
+
+    // The requested deadline becomes the official one.
+    await updateConnection(conn.id, {
+      auto_release_at: extension.requested_deadline,
+      release_status: "EXTENDED",
+    });
+
+    // An ACCEPTED extension is the corrective action for an at-risk deadline, so
+    // it clears the flag (§5.14). This is the Seeker's decision, not the Linker's.
+    await clearMissedCommitmentFlag({
+      connectionId: conn.id,
+      reason: "Extension accepted by the Seeker — deadline extended.",
+    });
+
+    await notifyUser(conn.linker_id, conn.id, {
+      type: "CONNECTION_EXTENSION_ACCEPTED",
+      title: "Your extension request was accepted",
+      body: `The deadline moved by ${extension.days_requested} day(s).`,
+      data: { connectionId: conn.id, days: extension.days_requested },
+    });
+
+    revalidatePath("/dashboard/connections/" + conn.id);
+    return { success: true };
+  } catch (e: unknown) {
+    console.error("acceptExtensionAction error", e);
+    return { error: "Could not accept the extension." };
+  }
+}
+
+/**
+ * Seeker rejects a pending extension (blueprint §5.14).
+ *
+ * "If rejected, the original deadline remains applicable and the yellow flag
+ * remains raised if the deadline is subsequently missed." So nothing moves here
+ * — the flag is deliberately left alone.
+ */
+export async function rejectExtensionAction(
+  prevState: CompletionState | undefined,
+  formData: FormData
+): Promise<CompletionState> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "Not authenticated." };
+
+  const extensionId = String(formData.get("extensionId") || "");
+  const rejectionReason = String(formData.get("rejectionReason") || "").trim() || null;
+  const extension = extensionId ? await getExtensionById(extensionId) : null;
+  if (!extension) return { error: "Extension request not found." };
+
+  const conn = await getConnectionById(extension.connection_id);
+  if (!conn) return { error: "Connection not found." };
+  const opp = await getOpportunityById(conn.opportunity_id);
+  if (!opp) return { error: "Opportunity not found." };
+
+  if (opp.seeker_id !== user.id) {
+    return { error: "Only the Seeker can decide on an extension." };
+  }
+  if (extension.status !== "REQUESTED") {
+    return { error: "This extension request has already been decided." };
+  }
+
+  try {
+    await updateExtension(extension.id, {
+      status: "REJECTED",
+      responded_by_id: user.id,
+      responded_at: new Date().toISOString(),
+      rejection_reason: rejectionReason,
+    });
+
+    // The original deadline stands and the flag is NOT cleared.
+    await notifyUser(conn.linker_id, conn.id, {
+      type: "CONNECTION_EXTENSION_REJECTED",
+      title: "Your extension request was rejected",
+      body: rejectionReason ?? "The original deadline remains in force.",
+      data: { connectionId: conn.id },
+    });
+
+    revalidatePath("/dashboard/connections/" + conn.id);
+    return { success: true };
+  } catch (e: unknown) {
+    console.error("rejectExtensionAction error", e);
+    return { error: "Could not reject the extension." };
   }
 }
 

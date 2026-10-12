@@ -28,6 +28,7 @@ import type {
   ProgressReportCommentRow,
   ProgressReportCommentRevisionRow,
   LinkerFlagRow,
+  ConnectionExtensionRow,
 } from "@/lib/jomlink-types";
 
 /**
@@ -1093,6 +1094,76 @@ export async function updateDeadline(
     .maybeSingle();
   if (error) throw error;
   return (data as OpportunityDeadlineRow | null) ?? null;
+}
+
+// ── Extension requests (§5.14) ──────────────────────────────
+export async function getExtensionsByConnection(
+  connectionId: string
+): Promise<ConnectionExtensionRow[]> {
+  const { data, error } = await sc()
+    .from("connection_extensions")
+    .select("*")
+    .eq("connection_id", connectionId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data as ConnectionExtensionRow[] | null) ?? [];
+}
+
+/**
+ * The single open request for a connection, if any.
+ *
+ * The database enforces at most one REQUESTED row per connection (partial unique
+ * index), so `maybeSingle` is safe here and a second live request cannot exist.
+ */
+export async function getOpenExtensionByConnection(
+  connectionId: string
+): Promise<ConnectionExtensionRow | null> {
+  const { data, error } = await sc()
+    .from("connection_extensions")
+    .select("*")
+    .eq("connection_id", connectionId)
+    .eq("status", "REQUESTED")
+    .maybeSingle();
+  if (error) throw error;
+  return (data as ConnectionExtensionRow | null) ?? null;
+}
+
+export async function getExtensionById(
+  id: string
+): Promise<ConnectionExtensionRow | null> {
+  const { data, error } = await sc()
+    .from("connection_extensions")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as ConnectionExtensionRow | null) ?? null;
+}
+
+export async function createExtension(
+  values: Record<string, unknown>
+): Promise<ConnectionExtensionRow> {
+  const { data, error } = await sc()
+    .from("connection_extensions")
+    .insert(values)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data as ConnectionExtensionRow;
+}
+
+export async function updateExtension(
+  id: string,
+  values: Record<string, unknown>
+): Promise<ConnectionExtensionRow | null> {
+  const { data, error } = await sc()
+    .from("connection_extensions")
+    .update(values)
+    .eq("id", id)
+    .select("*")
+    .maybeSingle();
+  if (error) throw error;
+  return (data as ConnectionExtensionRow | null) ?? null;
 }
 
 /**

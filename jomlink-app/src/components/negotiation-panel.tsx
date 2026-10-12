@@ -13,6 +13,11 @@ import {
   type NegotiationState,
 } from "@/app/actions/negotiations";
 import { FEES, formatDate, formatMYR } from "@/lib/constants";
+import {
+  canRespondToLatestOffer,
+  latestNegotiation,
+  type NegotiationRole,
+} from "@/lib/negotiation";
 import type { ProposalNegotiationRow } from "@/lib/jomlink-types";
 
 const initialState: NegotiationState = {};
@@ -40,7 +45,12 @@ function money(n: number | null | undefined) {
  * authority is `isProposalNegotiable()` in `lib/status.ts`, evaluated on the
  * server. Deriving it locally is what previously let a SELECTED (already-escrowed,
  * terms-locked) proposal keep offering Counter-offer and Accept.
- */
+  *
+  * Turn-taking is the other half of the gate: being open for negotiation does not
+  * mean *this* viewer may act. Whoever authored the standing offer has to wait for
+  * the other side to answer, so Counter-offer is disabled for them until a new
+  * offer lands. See `lib/negotiation.ts`.
+  */
 export function NegotiationPanel({
   proposalId,
   currentReward,
@@ -48,8 +58,14 @@ export function NegotiationPanel({
   status,
   /** Server-computed: may the terms still change? */
   negotiable,
-  /** Hide the accept button when the caller is the author of the live offer. */
-  canAccept = true,
+    /**
+     * Which side of the proposal the viewer is on. Required, because turn-taking
+     * cannot be decided without it: the author of the standing offer must wait for
+     * the other side to answer before they may counter again.
+     */
+    viewerRole,
+    /** Hide the accept button when the caller is the author of the live offer. */
+    canAccept = true,
   /**
    * Server-computed affordability for the accepting party. The Seeker funds the
    * reward, so when they would be short the Accept button is refused up front
@@ -65,7 +81,8 @@ export function NegotiationPanel({
   currentDeliverable?: string | null;
   status: string;
   negotiable: boolean;
-  canAccept?: boolean;
+    viewerRole: NegotiationRole;
+    canAccept?: boolean;
   shortfall?: number;
   compact?: boolean;
 }) {
@@ -112,13 +129,21 @@ export function NegotiationPanel({
   }
 
   const isOpen = negotiable;
-  const latest = negotiations.length > 0 ? negotiations[negotiations.length - 1] : null;
+    const latest = latestNegotiation(negotiations);
   const acceptAmount = latest?.offered_reward ?? currentReward;
   const canAfford = shortfall <= 0;
 
-  // Locking in terms only makes sense while the proposal is live.
-  const showActions = isOpen;
-  const showAccept = showActions && canAccept;
+    // Turn-taking. The author of the standing offer has already had their say, so
+    // they must wait for the counterparty to answer before they may counter again.
+    // Without this the button stayed live for both sides and a member could keep
+    // out-bidding themselves while the other side never replied.
+    const onTurn = canRespondToLatestOffer(negotiations, viewerRole);
+    const waitingForCounterparty = loaded && !onTurn;
+
+    // Locking in terms only makes sense while the proposal is live.
+    const showActions = isOpen;
+    const showAccept = showActions && canAccept;
+    const canCounter = showActions && onTurn;
 
   return (
     <div className="space-y-3">
@@ -155,9 +180,9 @@ export function NegotiationPanel({
         {latest && isOpen && (
           <p className="mt-2 text-xs text-muted-foreground">
             Latest offer stands at <strong>{money(latest.offered_reward)}</strong>.{" "}
-            {canAccept
+                    {onTurn
               ? "Accept it to lock the terms, or post a counter-offer."
-              : "Your counterparty can accept it, or you can revise it with another counter-offer."}
+                      : "You made this offer, so it is with your counterparty now — you can counter again once they respond."}
           </p>
         )}
       </div>
@@ -170,9 +195,15 @@ export function NegotiationPanel({
             variant="outline"
             size={compact ? "sm" : "default"}
             onClick={() => setShowCounter((v) => !v)}
-          >
-            {showCounter ? "Cancel" : "Counter-offer"}
-          </Button>
+                      disabled={!canCounter}
+                      title={
+                        canCounter
+                          ? undefined
+                          : "Waiting for the other side to respond to your offer."
+                      }
+                    >
+                      {showCounter ? "Cancel" : "Counter-offer"}
+                    </Button>
           {showAccept && (
             <form action={acceptAction}>
               <input type="hidden" name="proposalId" value={proposalId} />
@@ -215,6 +246,14 @@ export function NegotiationPanel({
       {acceptState?.error && (
         <p className="text-sm text-destructive">{acceptState.error}</p>
       )}
+
+            {/* Say why the button is unavailable rather than leaving it looking broken. */}
+            {waitingForCounterparty && (
+              <p className="text-xs text-muted-foreground">
+                Waiting for the other side to respond to your offer. Counter-offer
+                re-opens as soon as they do.
+              </p>
+            )}
 
       {/* Counter-offer form */}
       {showCounter && (
@@ -265,7 +304,9 @@ export function NegotiationPanel({
         <p className="text-xs text-muted-foreground">
           {status === "SELECTED"
             ? "A Linker has been selected and the reward is committed to escrow, so the terms are locked. Negotiation is closed."
-            : "This proposal is closed, so negotiation is no longer available."}
+            : status === "ACCEPTED"
+              ? "The terms are agreed. Selecting the Linker still commits the agreed reward to escrow from the Seeker's wallet, so they can select or complete it through to escrow funding."
+              : "This proposal is closed, so negotiation is no longer available."}
         </p>
       )}
     </div>

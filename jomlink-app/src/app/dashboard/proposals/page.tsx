@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/constants";
 import { isProposalNegotiable } from "@/lib/status";
+import { canRespondToLatestOffer } from "@/lib/negotiation";
 import { NegotiationPanel } from "@/components/negotiation-panel";
 
 export const metadata = { title: "My Proposals · Jomlink" };
@@ -85,10 +86,10 @@ export default async function MyProposalsPage() {
           {proposals.map((p) => {
             const opp = p.opportunities;
             const thread = threadByProposal.get(p.id) ?? [];
-            const latest = thread.length > 0 ? thread[thread.length - 1] : null;
             // The Linker can accept unless they authored the standing offer —
-            // you cannot agree with yourself.
-            const canAccept = latest ? latest.from_role !== "LINKER" : true;
+                        // you cannot agree with yourself. The panel applies the same rule to
+                        // Counter-offer, so the author of the live offer waits for a reply.
+                        const canAccept = canRespondToLatestOffer(thread, "LINKER");
             const negotiable = isProposalNegotiable(p.status);
 
             return (
@@ -104,7 +105,7 @@ export default async function MyProposalsPage() {
                         {p.is_target_substitution && (
                           <Badge variant="warning">Substitution</Badge>
                         )}
-                        {latest && (
+                        {thread.length > 0 && (
                           <Badge variant="default">Counter-offer</Badge>
                         )}
                       </div>
@@ -142,9 +143,10 @@ export default async function MyProposalsPage() {
                     currentDeliverable={p.agreed_deliverable ?? p.proposed_deliverable}
                     status={p.status}
                     negotiable={negotiable}
-                    canAccept={canAccept}
-                    compact
-                  />
+                                        viewerRole="LINKER"
+                                        canAccept={canAccept}
+                                        compact
+                                      />
                 </CardContent>
               </Card>
             );

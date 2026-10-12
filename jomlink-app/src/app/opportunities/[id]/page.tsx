@@ -126,10 +126,10 @@ export default async function OpportunityDetailPage({
   const canEdit =
     isOwner && EDITABLE_STATUSES.has(opp.status) && proposals.length === 0;
 
-  // Has a Linker been committed to this opportunity? Either the opportunity
-  // carries a linker_id, or it has progressed past the point of no return.
-  const linkerCommitted =
-    !!opp.linker_id || LINKER_COMMITTED_STATUSES.has(opp.status);
+  // Has a Linker been committed to this opportunity? The `opportunities` table
+  // has no `linker_id` column — the selected Linker lives on the proposal and the
+  // connection — so the status is the only signal here.
+  const linkerCommitted = LINKER_COMMITTED_STATUSES.has(opp.status);
 
   // For a logged-in non-owner, look up their own proposal (if any) and the
   // connection once one exists. Both drive which call-to-action renders below:
@@ -257,7 +257,7 @@ export default async function OpportunityDetailPage({
         )}
         {isOwner &&
           opp.status === "ACTIVE" &&
-          !opp.linker_id &&
+          !linkerCommitted &&
           Number(opp.funded_amount || 0) <= 0 && (
             <Card className="mb-6 border-primary/30">
               <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">

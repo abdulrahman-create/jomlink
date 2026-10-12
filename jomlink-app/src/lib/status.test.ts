@@ -30,6 +30,16 @@ describe("isProposalNegotiable", () => {
     expect(isProposalNegotiable("SELECTED")).toBe(false);
   });
 
+  it("keeps ACCEPTED negotiable — it is a step, not an end state", () => {
+    // `acceptTermsAction` writes ACCEPTED (terms agreed, no money moves) while
+    // `selectLinkerAction` writes SELECTED (terms agreed + reward in escrow).
+    // Treating ACCEPTED as terminal stranded the flow one step before the money:
+    // the Seeker agreed the terms, the proposal read ACCEPTED, and the Select
+    // button that commits escrow became unpressed-able — a click that did
+    // nothing, with no visible reason.
+    expect(isProposalNegotiable("ACCEPTED")).toBe(true);
+  });
+
   it("rejects every other terminal status", () => {
     expect(isProposalNegotiable("COMPLETED")).toBe(false);
     expect(isProposalNegotiable("REJECTED")).toBe(false);
@@ -78,6 +88,13 @@ describe("isProposalSelectable", () => {
     expect(isProposalSelectable("SUBMITTED")).toBe(true);
     expect(isProposalSelectable("UNDER_REVIEW")).toBe(true);
     expect(isProposalSelectable("ACCEPTED")).toBe(true);
+  });
+
+  it("keeps ACCEPTED selectable so the reward can still reach escrow", () => {
+    // Pairs with the negotiation test above: ACCEPTED must remain both
+    // negotiable and selectable, or the agreed terms can never be funded.
+    expect(isProposalSelectable("ACCEPTED")).toBe(true);
+    expect(isProposalNegotiable("ACCEPTED")).toBe(true);
   });
 
   it("refuses a proposal the Seeker already rejected or that was withdrawn", () => {

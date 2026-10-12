@@ -10,6 +10,7 @@ import {
 import { SiteHeaderWithUser } from "@/components/site-header-with-user";
 import { SiteFooter } from "@/components/site-footer";
 import { ProposalForm } from "./proposal-form";
+import { isOpportunitySelectable } from "@/lib/status";
 import type { RelationshipRow } from "@/lib/jomlink-types";
 
 export const metadata = { title: "Apply · Jomlink" };
@@ -30,16 +31,12 @@ export default async function ApplyPage({
   // Guard the URL directly, not just the CTA: an opportunity that already has a
   // committed Linker takes no further proposals, and a Linker who already
   // applied must not be able to submit a second one.
-  const COMMITTED = [
-    "LINKER_SELECTED",
-    "AWAITING_CONFIRMATION",
-    "IN_PROGRESS",
-    "APPOINTMENT_SCHEDULED",
-    "AWAITING_VERIFICATION",
-    "COMPLETED",
-    "DISPUTED",
-  ];
-  if (opp.linker_id || COMMITTED.includes(opp.status) || opp.status !== "ACTIVE") {
+  //
+  // `isOpportunitySelectable` is the shared list (lib/status.ts). The surrounding
+  // `!== "ACTIVE"` makes the list largely redundant today, but it keeps this gate
+  // in step with the action instead of maintaining a sixth private copy. There is
+  // no `opp.linker_id` to test — the column does not exist.
+  if (!isOpportunitySelectable(opp.status) || opp.status !== "ACTIVE") {
     redirect("/opportunities/" + id);
   }
 

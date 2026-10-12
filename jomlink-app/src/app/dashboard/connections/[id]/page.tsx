@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Calendar, ClipboardCheck, Sparkles, Scale, AlertTriangle, CalendarClock, Flag, MessageSquare, Paperclip } from "lucide-react";
+import { ArrowLeft, Calendar, ClipboardCheck, Sparkles, Scale, CalendarClock, MessageSquare, Paperclip, Clock } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
 import {
   getConnectionById,
@@ -13,6 +13,7 @@ import {
   getDeadlineByConnection,
   getActiveFlagByConnection,
   getProgressReportsByConnection,
+  getOpenExtensionByConnection,
 } from "@/lib/queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +26,7 @@ import {
   SubmitEvidence,
   CompleteConnection,
   ExtensionForm,
+  ExtensionDecision,
   MarkFailed,
   ReviewForm,
   RaiseDisputeForm,
@@ -69,7 +71,7 @@ export default async function ConnectionDetailPage({
 
   const counterpartyId = isSeeker ? conn.linker_id : opp.seeker_id;
 
-  const [appointments, evidence, dispute, deadline, flag, reports, myReview, theirReviews] =
+  const [appointments, evidence, dispute, deadline, flag, reports, myReview, theirReviews, openExtension] =
     await Promise.all([
       getAppointmentsByConnection(conn.id),
       getEvidenceByConnection(conn.id),
@@ -82,6 +84,9 @@ export default async function ConnectionDetailPage({
       // the counterparty's rating summary on this page.
       getReviewByAuthorAndOpportunity(user.id, opp.id),
       getReviewsForSubject(counterpartyId),
+      // A pending extension request (§5.14). The Linker sees that it is awaiting
+      // a decision; the Seeker sees the accept/reject controls.
+      getOpenExtensionByConnection(conn.id),
     ]);
 
   const latestAppointment = (appointments as AppointmentRow[])[
@@ -366,12 +371,54 @@ export default async function ConnectionDetailPage({
         </Card>
       )}
 
-      {/* Extension: only while the task is still open. Requesting an extension
-          after completion would push the escrow release date on a finished job. */}
+      {/* Extension (§5.14). The Linker requests; the SEEKER decides. Only an
+          accepted extension moves the deadline and clears the yellow flag, so
+          the two roles see different things here. */}
       {isLinker &&
-        ["IN_PROGRESS", "AWAITING_VERIFICATION"].includes(conn.status) && (
+        ["IN_PROGRESS", "AWAITING_VERIFICATION"].includes(conn.status) &&
+        (openExtension ? (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+                <Clock className="h-4 w-4" aria-hidden="true" /> Extension requested
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                You asked for {openExtension.days_requested} more day(s). The
+                deadline does not move until the Seeker accepts.
+              </p>
+              {openExtension.reason && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Reason: {openExtension.reason}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        ) : (
           <ExtensionForm connectionId={conn.id} />
-        )}
+        ))}
+
+      {isSeeker && openExtension && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+              <Clock className="h-4 w-4" aria-hidden="true" /> Extension request
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {openExtension.reason && (
+              <p className="text-sm text-muted-foreground">
+                Reason given: {openExtension.reason}
+              </p>
+            )}
+            <ExtensionDecision
+              extensionId={openExtension.id}
+              daysRequested={openExtension.days_requested}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Review */}
       <Card>

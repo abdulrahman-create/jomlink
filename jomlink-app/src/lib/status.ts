@@ -50,6 +50,20 @@ export function statusVariant(status: string) {
  * finished engagement still offered "Counter-offer" and "Accept".
  *
  * Prefer these over writing the array inline.
+ *
+ * ── ACCEPTED is NOT terminal, and must not be added here ──────────────────
+ *
+ * `acceptTermsAction` (agreed terms, no money moves) and `selectLinkerAction`
+ * (agreed terms + full reward to escrow → SELECTED) intentionally write
+ * DIFFERENT statuses. Treating ACCEPTED as terminal broke the flow at its most
+ * important moment: the Seeker agrees the terms, the proposal reads ACCEPTED,
+ * and the Select button that commits escrow becomes unpressed-able. The Seeker
+ * clicks and nothing happens, with no visible reason.
+ *
+ * ACCEPTED means "the terms are settled, still to be funded". It is a step on
+ * the way to SELECTED, not the end of it. The escrow itself is guarded
+ * separately — see the wallet/affordability and connection-idempotency checks in
+ * `selectLinkerAction` — so reachability here costs nothing.
  */
 
 /** No further negotiation is possible — terms are locked or the proposal is void. */
@@ -72,6 +86,10 @@ export function isProposalNegotiable(status: string | null | undefined): boolean
  * is terminal for negotiation but is still the trigger for opening the
  * connection, so the Seeker must be able to press Select again to recover an
  * interrupted handoff.
+ *
+ * ACCEPTED is selectable for the same reason — it is the "terms agreed, escrow
+ * not yet committed" state, and blocking it strands the flow one step before the
+ * money moves.
  */
 export function isProposalSelectable(status: string | null | undefined): boolean {
   if (!status) return false;

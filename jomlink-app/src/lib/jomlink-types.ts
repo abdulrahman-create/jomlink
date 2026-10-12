@@ -101,7 +101,6 @@ export interface OpportunityRow {
   confidentiality: string;
   additional_requirements: string | null;
   status: string;
-  linker_id: string | null;
   activation_fee: number | null;
   funded_amount: number | null;
   is_restricted_category: boolean;
@@ -300,6 +299,31 @@ export interface ProgressReportCommentRevisionRow {
 
 export type FlagType = "MISSED_COMMITMENT";
 export type FlagStatus = "RAISED" | "CLEARED";
+
+/**
+ * Extension request lifecycle (blueprint §5.14).
+ *
+ * The Linker requests; the SEEKER decides. Only an ACCEPTED extension moves the
+ * official deadline and clears the yellow flag — a Linker cannot grant their own.
+ */
+export type ExtensionStatus = "REQUESTED" | "ACCEPTED" | "REJECTED" | "WITHDRAWN";
+
+export interface ConnectionExtensionRow {
+  id: string;
+  connection_id: string;
+  requested_by_id: string;
+  /** The deadline in force when the request was made. */
+  previous_deadline: string | null;
+  requested_deadline: string;
+  days_requested: number;
+  reason: string | null;
+  status: ExtensionStatus;
+  responded_by_id: string | null;
+  responded_at: string | null;
+  rejection_reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface LinkerFlagRow {
   id: string;

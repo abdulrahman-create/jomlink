@@ -1,16 +1,16 @@
-# Graph Report - jomlink  (2026-10-06)
+# Graph Report - jomlink  (2026-10-07)
 
 ## Corpus Check
-- 280 files · ~538,454 words
+- 294 files · ~566,618 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 6211 nodes · 8271 edges · 544 communities (182 shown, 362 thin omitted)
+- 6360 nodes · 8669 edges · 552 communities (190 shown, 362 thin omitted)
 - Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 175 edges (avg confidence: 0.76)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `a178595a`
+- Built from commit: `152cb434`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -397,6 +397,7 @@
 - [[_COMMUNITY_Community 383|Community 383]]
 - [[_COMMUNITY_Community 384|Community 384]]
 - [[_COMMUNITY_Community 385|Community 385]]
+- [[_COMMUNITY_Community 386|Community 386]]
 - [[_COMMUNITY_Community 387|Community 387]]
 - [[_COMMUNITY_Community 388|Community 388]]
 - [[_COMMUNITY_Community 389|Community 389]]
@@ -524,6 +525,13 @@
 - [[_COMMUNITY_Community 514|Community 514]]
 - [[_COMMUNITY_Community 515|Community 515]]
 - [[_COMMUNITY_Community 516|Community 516]]
+- [[_COMMUNITY_Community 517|Community 517]]
+- [[_COMMUNITY_Community 518|Community 518]]
+- [[_COMMUNITY_Community 519|Community 519]]
+- [[_COMMUNITY_Community 520|Community 520]]
+- [[_COMMUNITY_Community 521|Community 521]]
+- [[_COMMUNITY_Community 522|Community 522]]
+- [[_COMMUNITY_Community 523|Community 523]]
 - [[_COMMUNITY_Community 615|Community 615]]
 - [[_COMMUNITY_Community 647|Community 647]]
 - [[_COMMUNITY_Community 704|Community 704]]
@@ -553,16 +561,16 @@
 - [[_COMMUNITY_Community 3132|Community 3132]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `sc()` - 137 edges
-2. `getCurrentUser` - 101 edges
-3. `TailwindConfigGenerator` - 57 edges
-4. `getOpportunityById()` - 49 edges
+1. `sc()` - 143 edges
+2. `getCurrentUser` - 108 edges
+3. `getOpportunityById()` - 62 edges
+4. `TailwindConfigGenerator` - 57 edges
 5. `DesignSystemGenerator` - 45 edges
 6. `TestTailwindConfigGenerator` - 35 edges
 7. `ShadcnInstaller` - 33 edges
-8. `requireAdmin()` - 32 edges
-9. `Button()` - 31 edges
-10. `search_stack()` - 30 edges
+8. `getConnectionById()` - 33 edges
+9. `Button()` - 32 edges
+10. `requireAdmin()` - 32 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `Jomlink Web App Hero Background (JPEG Build Asset)` --semantically_similar_to--> `Jomlink Hero Background — Metropolitan Night Skyline`  [INFERRED] [semantically similar]
@@ -577,13 +585,12 @@
   hero background.png → jomlink icon.png
 
 ## Import Cycles
-- 3-file cycle: `jomlink-app/src/generated/prisma/internal/prismaNamespace.ts -> jomlink-app/src/generated/prisma/models.ts -> jomlink-app/src/generated/prisma/models/reputation_metrics.ts -> jomlink-app/src/generated/prisma/internal/prismaNamespace.ts`
-- 3-file cycle: `jomlink-app/src/generated/prisma/internal/prismaNamespace.ts -> jomlink-app/src/generated/prisma/models.ts -> jomlink-app/src/generated/prisma/models/payouts.ts -> jomlink-app/src/generated/prisma/internal/prismaNamespace.ts`
+- 3-file cycle: `jomlink-app/src/generated/prisma/internal/prismaNamespace.ts -> jomlink-app/src/generated/prisma/models.ts -> jomlink-app/src/generated/prisma/models/relationship_verifications.ts -> jomlink-app/src/generated/prisma/internal/prismaNamespace.ts`
+- 3-file cycle: `jomlink-app/src/generated/prisma/internal/prismaNamespace.ts -> jomlink-app/src/generated/prisma/models.ts -> jomlink-app/src/generated/prisma/models/business_profiles.ts -> jomlink-app/src/generated/prisma/internal/prismaNamespace.ts`
 - 3-file cycle: `jomlink-app/src/generated/prisma/commonInputTypes.ts -> jomlink-app/src/generated/prisma/internal/prismaNamespace.ts -> jomlink-app/src/generated/prisma/models.ts -> jomlink-app/src/generated/prisma/commonInputTypes.ts`
 - 3-file cycle: `jomlink-app/src/generated/prisma/internal/prismaNamespace.ts -> jomlink-app/src/generated/prisma/models.ts -> jomlink-app/src/generated/prisma/models/admin_members.ts -> jomlink-app/src/generated/prisma/internal/prismaNamespace.ts`
 - 3-file cycle: `jomlink-app/src/generated/prisma/internal/prismaNamespace.ts -> jomlink-app/src/generated/prisma/models.ts -> jomlink-app/src/generated/prisma/models/appointments.ts -> jomlink-app/src/generated/prisma/internal/prismaNamespace.ts`
 - 3-file cycle: `jomlink-app/src/generated/prisma/internal/prismaNamespace.ts -> jomlink-app/src/generated/prisma/models.ts -> jomlink-app/src/generated/prisma/models/audit_logs.ts -> jomlink-app/src/generated/prisma/internal/prismaNamespace.ts`
-- 3-file cycle: `jomlink-app/src/generated/prisma/internal/prismaNamespace.ts -> jomlink-app/src/generated/prisma/models.ts -> jomlink-app/src/generated/prisma/models/business_profiles.ts -> jomlink-app/src/generated/prisma/internal/prismaNamespace.ts`
 - 3-file cycle: `jomlink-app/src/generated/prisma/internal/prismaNamespace.ts -> jomlink-app/src/generated/prisma/models.ts -> jomlink-app/src/generated/prisma/models/connection_evidence.ts -> jomlink-app/src/generated/prisma/internal/prismaNamespace.ts`
 - 3-file cycle: `jomlink-app/src/generated/prisma/internal/prismaNamespace.ts -> jomlink-app/src/generated/prisma/models.ts -> jomlink-app/src/generated/prisma/models/connections.ts -> jomlink-app/src/generated/prisma/internal/prismaNamespace.ts`
 - 3-file cycle: `jomlink-app/src/generated/prisma/internal/prismaNamespace.ts -> jomlink-app/src/generated/prisma/models.ts -> jomlink-app/src/generated/prisma/models/disputes.ts -> jomlink-app/src/generated/prisma/internal/prismaNamespace.ts`
@@ -595,6 +602,7 @@
 - 3-file cycle: `jomlink-app/src/generated/prisma/internal/prismaNamespace.ts -> jomlink-app/src/generated/prisma/models.ts -> jomlink-app/src/generated/prisma/models/notifications.ts -> jomlink-app/src/generated/prisma/internal/prismaNamespace.ts`
 - 3-file cycle: `jomlink-app/src/generated/prisma/internal/prismaNamespace.ts -> jomlink-app/src/generated/prisma/models.ts -> jomlink-app/src/generated/prisma/models/opportunities.ts -> jomlink-app/src/generated/prisma/internal/prismaNamespace.ts`
 - 3-file cycle: `jomlink-app/src/generated/prisma/internal/prismaNamespace.ts -> jomlink-app/src/generated/prisma/models.ts -> jomlink-app/src/generated/prisma/models/organisations.ts -> jomlink-app/src/generated/prisma/internal/prismaNamespace.ts`
+- 3-file cycle: `jomlink-app/src/generated/prisma/internal/prismaNamespace.ts -> jomlink-app/src/generated/prisma/models.ts -> jomlink-app/src/generated/prisma/models/payouts.ts -> jomlink-app/src/generated/prisma/internal/prismaNamespace.ts`
 - 3-file cycle: `jomlink-app/src/generated/prisma/internal/prismaNamespace.ts -> jomlink-app/src/generated/prisma/models.ts -> jomlink-app/src/generated/prisma/models/proposal_negotiations.ts -> jomlink-app/src/generated/prisma/internal/prismaNamespace.ts`
 - 3-file cycle: `jomlink-app/src/generated/prisma/internal/prismaNamespace.ts -> jomlink-app/src/generated/prisma/models.ts -> jomlink-app/src/generated/prisma/models/refunds.ts -> jomlink-app/src/generated/prisma/internal/prismaNamespace.ts`
 
@@ -612,7 +620,7 @@
 - **Phase 9 Planned Schema Models** — jomlink_app_docs_phase_09_deadline_progress_opportunity_deadlines_model, jomlink_app_docs_phase_09_deadline_progress_progress_reports_model, jomlink_app_docs_phase_09_deadline_progress_progress_report_comments_model, jomlink_app_docs_phase_09_deadline_progress_comment_revisions_model, jomlink_app_docs_phase_09_deadline_progress_linker_flags_model [EXTRACTED 1.00]
 - **Evidence of Record Components** — jomlink_app_docs_phase_09_deadline_progress_deadline_request_record, jomlink_app_docs_phase_09_deadline_progress_phase_progress_report_thread, jomlink_app_docs_phase_09_deadline_progress_phase_comment_revision_history, jomlink_app_docs_phase_09_deadline_progress_linker_flags_model [EXTRACTED 1.00]
 
-## Communities (544 total, 362 thin omitted)
+## Communities (552 total, 362 thin omitted)
 
 ### Community 0 - "Design Token Validator Tests"
 Cohesion: 0.07
@@ -628,7 +636,7 @@ Nodes (36): format_context(), format_result(), main(), Format a single search re
 
 ### Community 3 - "App Package Manifest"
 Cohesion: 0.05
-Nodes (39): dependencies, bcryptjs, class-variance-authority, clsx, dotenv, lucide-react, next, pg (+31 more)
+Nodes (42): dependencies, bcryptjs, class-variance-authority, clsx, dotenv, lucide-react, next, pg (+34 more)
 
 ### Community 4 - "Spacing Token Definitions"
 Cohesion: 0.09
@@ -672,7 +680,7 @@ Nodes (19): compilerOptions, allowJs, esModuleInterop, incremental, isolatedModu
 
 ### Community 16 - "Semantic Color Tokens"
 Cohesion: 0.11
-Nodes (19): $type, $value, background, destructive-foreground, muted, primary-foreground, secondary, secondary-foreground (+11 more)
+Nodes (19): $type, $value, background, foreground, muted-foreground, primary, primary-hover, secondary (+11 more)
 
 ### Community 17 - "Background Fetch Script"
 Cohesion: 0.17
@@ -747,12 +755,12 @@ Cohesion: 0.22
 Nodes (7): main(), Add all available shadcn/ui components.          Args:             overwrite: If, List installed components.          Returns:             Tuple of (success, mess, Check if shadcn is initialized in project.          Returns:             True if, Get list of already installed components.          Returns:             List of, Read shadcn version from project package.json; fall back to a pinned default., Add shadcn/ui components.          Args:             components: List of compone
 
 ### Community 41 - "Community 41"
-Cohesion: 0.15
-Nodes (17): $type, $value, $type, $value, bg, bg, border, padding (+9 more)
+Cohesion: 0.20
+Nodes (12): $type, $value, bg, bg, padding, shadow, card, bg (+4 more)
 
 ### Community 42 - "Community 42"
-Cohesion: 0.20
-Nodes (12): padding-x, padding-y, input, $type, $value, focus-ring, padding-x, padding-y (+4 more)
+Cohesion: 0.29
+Nodes (8): padding-x, input, $type, $value, focus-ring, padding-x, $type, $value
 
 ### Community 43 - "Community 43"
 Cohesion: 0.17
@@ -911,8 +919,8 @@ Cohesion: 0.20
 Nodes (9): Common Structures, Duarte Sparkline Pattern, Matching Strategy to Context, Product Demo (6 slides), Sales Pitch (9 slides), Search Commands, Slide Strategies, Strategy Selection (+1 more)
 
 ### Community 112 - "Community 112"
-Cohesion: 0.07
-Nodes (30): AdminMemberRow, AdminRole, AppointmentRow, BiometricLabelStatus, ConnectionEvidenceRow, DeadlineStatus, DisputeRow, EmploymentRow (+22 more)
+Cohesion: 0.11
+Nodes (40): acceptTermsAction(), counterOfferAction(), CounterSchema, NegotiationState, selectLinkerAction(), GET(), metadata, MyProposalsPage() (+32 more)
 
 ### Community 114 - "Community 114"
 Cohesion: 0.09
@@ -923,8 +931,8 @@ Cohesion: 0.10
 Nodes (19): Banner Design Tasks, Brand Identity Tasks, Component Creation, Corporate Identity Program Tasks, Design Routing Guide, Design System Migration, Icon Design Tasks, Implementation Tasks (+11 more)
 
 ### Community 116 - "Community 116"
-Cohesion: 0.67
-Nodes (3): primary, $type, $value
+Cohesion: 0.08
+Nodes (24): 10. Copy promised an action that was not offered, 11. Extension was unilateral — the Linker decided their own accountability 🟠, 1. Proposal submission notified nobody, 2. Notifications were not clickable, 3. The Linker had no negotiation UI, 4. Five divergent "closed" lists — finished projects still editable, 5. Missing connection-status guards (evidence, appointments), 6. The Seeker's Connections list was always empty (+16 more)
 
 ### Community 117 - "Community 117"
 Cohesion: 0.11
@@ -951,8 +959,8 @@ Cohesion: 0.11
 Nodes (17): Audit Frequency, Brand Consistency Checklist, Channel Audit, Collateral, Colors, Common Issues, Email, Imagery (+9 more)
 
 ### Community 166 - "Community 166"
-Cohesion: 0.08
-Nodes (53): labelBiometricAction(), moderateOpportunityAction(), reinstateMemberAction(), suspendMemberAction(), toggleRestrictedCategoryAction(), resolveDisputeAction(), updateDisputeStatusAction(), acceptTermsAction() (+45 more)
+Cohesion: 0.12
+Nodes (36): labelBiometricAction(), moderateOpportunityAction(), toggleRestrictedCategoryAction(), resolveDisputeAction(), updateDisputeStatusAction(), cancelOpportunityAction(), refundOpportunityAction(), releaseRewardAction() (+28 more)
 
 ### Community 167 - "Community 167"
 Cohesion: 0.11
@@ -964,11 +972,11 @@ Nodes (15): 22 Art Direction Styles, Banner Sizes & Art Direction Styles Referen
 
 ### Community 169 - "Community 169"
 Cohesion: 0.04
-Nodes (103): reviewKycAction(), ALLOWED_TYPES, BIOMETRIC_TYPES, biometricObjectPath(), DOCUMENT_TYPES, kycObjectPath(), KycSchema, submitKycAction() (+95 more)
+Nodes (110): reviewKycAction(), addBusinessProfile(), addEmployment(), ALLOWED_TYPES, BasicDetailsSchema, BasicDetailsState, BusinessSchema, BusinessState (+102 more)
 
 ### Community 170 - "Community 170"
 Cohesion: 0.08
-Nodes (54): reviewRelationshipAction(), updateMemberRoleAction(), TransactionState, AdminAuditLogsPage(), AdminDisputeDetailPage(), DEADLINE_STATUS_LABEL, metadata, REPORT_STATUS_LABEL (+46 more)
+Nodes (58): reinstateMemberAction(), reviewRelationshipAction(), suspendMemberAction(), updateMemberRoleAction(), TransactionState, AdminAuditLogsPage(), AdminDisputeDetailPage(), DEADLINE_STATUS_LABEL (+50 more)
 
 ### Community 171 - "Community 171"
 Cohesion: 0.12
@@ -984,7 +992,7 @@ Nodes (14): Available Styles, CLI Options, Commands, Generate Batch Variations, 
 
 ### Community 174 - "Community 174"
 Cohesion: 0.05
-Nodes (95): acknowledgeAppointmentAction(), AppointmentSchema, AppointmentState, proposeAppointmentAction(), addDays(), CompletionState, markConnectionCompleteAction(), markConnectionFailedAction() (+87 more)
+Nodes (108): acknowledgeAppointmentAction(), AppointmentSchema, AppointmentState, proposeAppointmentAction(), acceptExtensionAction(), addDays(), CompletionState, markConnectionCompleteAction() (+100 more)
 
 ### Community 175 - "Community 175"
 Cohesion: 0.13
@@ -996,11 +1004,11 @@ Nodes (14): AIDA (Attention-Interest-Desire-Action), Before-After-Bridge, Contra
 
 ### Community 177 - "Community 177"
 Cohesion: 0.06
-Nodes (53): AuthState, KycState, categoryValues, EDITABLE_STATUSES, isEditableStatus(), OpportunitySchema, OpportunityState, initialState (+45 more)
+Nodes (55): AuthState, KycState, OpportunityState, initialState, initialState, BusinessSection(), initialState, OBJECTIVES (+47 more)
 
 ### Community 178 - "Community 178"
-Cohesion: 0.06
-Nodes (43): ensureJomlinkAuthUser(), loginMember(), LoginSchema, logoutMember(), registerMember(), RegisterSchema, addBusinessProfile(), ALLOWED_TYPES (+35 more)
+Cohesion: 0.09
+Nodes (33): ensureJomlinkAuthUser(), loginMember(), LoginSchema, logoutMember(), registerMember(), RegisterSchema, ALLOWED_TYPES, BIOMETRIC_TYPES (+25 more)
 
 ### Community 179 - "Community 179"
 Cohesion: 0.14
@@ -1043,8 +1051,8 @@ Cohesion: 0.17
 Nodes (11): Auth flow (Supabase + Prisma), Definition of Done, Files involved, Goals, In scope, Key Implementation Notes, Notes / Risks, Out of scope (later phases) (+3 more)
 
 ### Community 189 - "Community 189"
-Cohesion: 0.17
-Nodes (11): Deadline setting (§5.6.1), Definition of Done, Files involved, Goals, In scope, Key Business Rules (blueprint §5), Out of scope (later phases), Phase 6 — Connection Workflow + Trust (+3 more)
+Cohesion: 0.13
+Nodes (14): Deadline setting (§5.6.1), Definition of Done, Evidence (§5.6, §9.11), Files involved, Goals, In scope, Key Business Rules (blueprint §5), Lifecycle guards (§5.6, §5.13) (+6 more)
 
 ### Community 190 - "Community 190"
 Cohesion: 0.18
@@ -1059,12 +1067,12 @@ Cohesion: 0.18
 Nodes (10): Admin side — `/admin/kyc?tab=biometrics`, Files, How it works, KYC Biometric Data Collection (face + ID), Member side — `/dashboard/kyc`, Privacy & compliance guardrails, Roadmap to an automated verifier, Setup (+2 more)
 
 ### Community 193 - "Community 193"
-Cohesion: 0.18
-Nodes (10): Definition of Done, Files involved, Goals, In scope, Key Business Rules (from blueprint §2), Notes / Risks, Out of scope (later phases), Phase 2 — Member Profile + Relationships (+2 more)
+Cohesion: 0.17
+Nodes (11): Addendum — relationship declarations could not be saved (fixed in Phase 11), Definition of Done, Files involved, Goals, In scope, Key Business Rules (from blueprint §2), Notes / Risks, Out of scope (later phases) (+3 more)
 
 ### Community 194 - "Community 194"
-Cohesion: 0.18
-Nodes (10): Definition of Done, Files involved, Goals, In scope, Key Business Rules (blueprint §3–4), Opportunity editing (Seeker), Out of scope (later phases), Phase 3 — Opportunity Marketplace + Matching (+2 more)
+Cohesion: 0.17
+Nodes (11): Definition of Done, Files involved, Goals, In scope, Key Business Rules (blueprint §3–4), Match scoring, Opportunity editing (Seeker), Out of scope (later phases) (+3 more)
 
 ### Community 195 - "Community 195"
 Cohesion: 0.18
@@ -1147,20 +1155,20 @@ Cohesion: 0.67
 Nodes (3): destructive, $type, $value
 
 ### Community 215 - "Community 215"
-Cohesion: 0.67
-Nodes (3): foreground, $type, $value
+Cohesion: 0.10
+Nodes (20): 1. Linker dashboard → "All" → Progress Reports was unreachable, 2. Duplicate "Progress" + "Update progress" buttons, 3. Linker could self-extend **after** completion, 4. Review form never disappeared, 5. Evidence badge promised a review that never happens, Bugs found in live testing, Coverage added (previously silent), Definition of Done (+12 more)
 
 ### Community 216 - "Community 216"
-Cohesion: 0.67
-Nodes (3): muted-foreground, $type, $value
+Cohesion: 0.19
+Nodes (12): markAllNotificationsReadAction(), markNotificationReadAction(), openNotificationAction(), metadata, NotificationsPage(), NotificationRow, proposalsRoute(), resolveNotificationHref() (+4 more)
 
 ### Community 217 - "Community 217"
-Cohesion: 0.67
-Nodes (3): primary-hover, $type, $value
+Cohesion: 0.12
+Nodes (16): 1. Relationship form would not save (`PGRST205`, then `42703`), 2. The match score measured almost nothing, 3. The Seeker could not see the score, Bugs found in live testing, Definition of Done, Files involved, Goals, How the score works (+8 more)
 
 ### Community 219 - "Community 219"
-Cohesion: 0.10
-Nodes (26): ProposalSchema, ProposalState, submitProposalAction(), withdrawProposalAction(), RelationshipsPage(), PublicMemberPage(), CancelOpportunity(), oppInit (+18 more)
+Cohesion: 0.19
+Nodes (9): FeesPage(), metadata, HowItWorksPage(), metadata, STEPS, metadata, metadata, InfoPage() (+1 more)
 
 ### Community 239 - "Community 239"
 Cohesion: 0.16
@@ -1168,7 +1176,7 @@ Nodes (23): POST(), GET(), GET(), creditVerifiedTopUp(), SettleResult, settleTop
 
 ### Community 243 - "Community 243"
 Cohesion: 0.06
-Nodes (35): BusinessPage(), FeesPage(), metadata, HowItWorksPage(), metadata, STEPS, metadata, ProposalForm() (+27 more)
+Nodes (57): BusinessPage(), RelationshipsPage(), CATEGORY_LABEL, PublicMemberPage(), CancelOpportunity(), oppInit, PublishOpportunity(), RefundOpportunity() (+49 more)
 
 ### Community 249 - "Community 249"
 Cohesion: 0.33
@@ -1190,6 +1198,10 @@ Nodes (5): adapter, main(), prisma, upsertSupabaseUser(), PrismaClient
 Cohesion: 0.02
 Nodes (125): BoolFilter, BoolNullableFilter, BoolNullableWithAggregatesFilter, BoolWithAggregatesFilter, DateTimeFilter, DateTimeNullableFilter, DateTimeNullableWithAggregatesFilter, DateTimeWithAggregatesFilter (+117 more)
 
+### Community 386 - "Community 386"
+Cohesion: 0.18
+Nodes (8): BLUEPRINT_BENEFITS, CATEGORY_ICONS, CATEGORY_PREVIEWS, PROBLEMS, STEPS, TESTIMONIALS, TRUST_FEATURES, PageBackground()
+
 ### Community 438 - "Community 438"
 Cohesion: 0.10
 Nodes (19): AdminRole, AppointmentStatus, ConfidentialityLevel, ConnectionDegree, ConnectionStatus, Currency, DisputeOutcome, DisputeStatus (+11 more)
@@ -1201,6 +1213,34 @@ Nodes (4): config, LogOptions, PrismaClient, PrismaClientConstructor
 ### Community 461 - "Community 461"
 Cohesion: 0.01
 Nodes (170): Admin_membersScalarFieldEnum, AppointmentsScalarFieldEnum, Args, At, AtLeast, AtLoose, AtStrict, Audit_logsScalarFieldEnum (+162 more)
+
+### Community 517 - "Community 517"
+Cohesion: 0.25
+Nodes (7): Conventions, Inspecting the database directly, Jomlink — Project Tracking Board, Known gaps & follow-ups, Outstanding migrations, Phase status, Recurring bug patterns (worth watching)
+
+### Community 518 - "Community 518"
+Cohesion: 0.60
+Nodes (5): $type, $value, border, border, border
+
+### Community 519 - "Community 519"
+Cohesion: 0.67
+Nodes (4): padding-y, padding-y, $type, $value
+
+### Community 520 - "Community 520"
+Cohesion: 0.67
+Nodes (3): destructive-foreground, $type, $value
+
+### Community 521 - "Community 521"
+Cohesion: 0.67
+Nodes (3): muted, $type, $value
+
+### Community 522 - "Community 522"
+Cohesion: 0.67
+Nodes (3): primary-foreground, $type, $value
+
+### Community 523 - "Community 523"
+Cohesion: 0.67
+Nodes (3): secondary-foreground, $type, $value
 
 ### Community 615 - "Community 615"
 Cohesion: 0.06
@@ -1307,11 +1347,11 @@ Cohesion: 0.01
 Nodes (208): AggregateUsers, BoolFieldUpdateOperationsInput, DateTimeFieldUpdateOperationsInput, EnumRoleFieldUpdateOperationsInput, GetUsersAggregateType, GetUsersGroupByPayload, NullableStringFieldUpdateOperationsInput, Prisma__usersClient (+200 more)
 
 ### Community 3132 - "Community 3132"
-Cohesion: 0.10
-Nodes (28): DashboardPage(), metadata, MyProposalsPage(), metadata, ProposalsReceivedPage(), ReceivedProposal, metadata, money() (+20 more)
+Cohesion: 0.05
+Nodes (49): CLOSED, ConnectionsPage(), metadata, STATUS_LABEL, DashboardPage(), metadata, ProposalsReceivedPage(), metadata (+41 more)
 
 ## Knowledge Gaps
-- **4303 isolated node(s):** `$schema`, `$value`, `$type`, `$value`, `$type` (+4298 more)
+- **4377 isolated node(s):** `$schema`, `$value`, `$type`, `$value`, `$type` (+4372 more)
   These have ≤1 connection - possible missing edges or undocumented components.
 - **362 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
@@ -1327,7 +1367,7 @@ _Questions this graph is uniquely positioned to answer:_
 - **Are the 30 inferred relationships involving `DesignSystemGenerator` (e.g. with `TestBm25CoreBehavior` and `TestDiagnosticsContracts`) actually correct?**
   _`DesignSystemGenerator` has 30 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `Resolve token reference like {primitive.color.ocean-blue.500} to hex value.`, `Load colors from assets/design-tokens.json for overlay gradients.      Resolves`, `Load background configuration from CSV.` to the rest of the system?**
-  _4586 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _4660 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Design Token Validator Tests` be split into smaller, more focused modules?**
   _Cohesion score 0.07071887784921099 - nodes in this community are weakly interconnected._
 - **Should `Color Token Definitions` be split into smaller, more focused modules?**

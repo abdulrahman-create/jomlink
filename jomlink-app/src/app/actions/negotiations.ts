@@ -7,7 +7,8 @@ import {
   getProposalById,
   getOpportunityById,
   createNegotiation,
-  updateProposal,
+    getNegotiationsByProposal,
+    updateProposal,
   updateOpportunityIfOwned,
   createConnection,
   getConnectionByProposal,
@@ -23,6 +24,7 @@ import {
   isProposalSelectable,
 } from "@/lib/status";
 import { notify } from "@/lib/notify";
+import { canRespondToLatestOffer } from "@/lib/negotiation";
 
 // ── Validation ──────────────────────────────────────────────
 // The agreed reward must stay at or above the platform floor so the 10%
@@ -79,7 +81,20 @@ export async function counterOfferAction(
     return { error: "This opportunity has closed, so its terms are final." };
   }
 
-  const parsed = CounterSchema.safeParse({
+    // Turn-taking. The author of the standing offer has already had their say, so
+    // they must wait for the counterparty to answer before countering again.
+    // Enforced here as well as in the panel because the panel's disabled button is
+    // advisory only — without this a member could keep out-bidding themselves and
+    // the other side would never get a turn.
+    const thread = await getNegotiationsByProposal(proposal.id);
+    if (!canRespondToLatestOffer(thread, isLinker ? "LINKER" : "SEEKER")) {
+      return {
+        error:
+          "You made the latest offer. Wait for the other side to respond before countering again.",
+      };
+    }
+
+    const parsed = CounterSchema.safeParse({
     offeredReward: formData.get("offeredReward"),
     message: formData.get("message") || undefined,
   });
@@ -245,9 +260,17 @@ export async function selectLinkerAction(
   if (opp.seeker_id !== user.id) {
     return { error: "Only the Seeker can select a Linker." };
   }
-  if (opp.linker_id) {
-    return { error: "A Linker has already been selected for this opportunity." };
-  }
+  // Recovery path: re-selecting a proposal that already won must not re-charge.
+  //
+  // There is intentionally NO `opp.linker_id` check here. The `opportunities`
+  // table has no such column — the selected Linker is recorded by
+  // `linker_proposals.status = 'SELECTED'` plus the connection. The previous
+  // `opp.linker_id` guard (and the write further down) referenced a column that
+  // does not exist, so PostgreSQL rejected the UPDATE, the whole transaction
+  // threw, and Select failed with "Could not select the Linker." for every
+  // proposal on every opportunity. A second SELECTED proposal on the same
+  // opportunity is already impossible: once one is selected the opportunity is
+  // LINKER_SELECTED and the status guard above refuses.
   if (opp.status !== "ACTIVE" && opp.status !== "PROPOSAL_RECEIVED" && opp.status !== "NEGOTIATION") {
     return { error: "This opportunity is not in a selectable state." };
   }
@@ -319,9 +342,13 @@ export async function selectLinkerAction(
     //    already LINKER_SELECTED and therefore refuses new proposals — the
     //    failure mode is "escrow not yet funded", never "still accepting
     //    applications after a Linker was chosen".
+    //
+    //    Do NOT write a `linkerId` here: the column does not exist, and adding
+    //    it back makes every Select fail with a PostgreSQL "column does not
+    //    exist" error. The Linker is identified by the proposal and the
+    //    connection.
     await updateOpportunityIfOwned(opp.id, user.id, {
       status: "LINKER_SELECTED",
-      linker_id: proposal.linker_id,
     });
 
     // 2) Full reward → escrow (OPPORTUNITY_FUNDING).

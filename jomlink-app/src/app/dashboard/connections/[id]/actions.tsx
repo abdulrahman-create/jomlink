@@ -8,11 +8,11 @@ import {
   CalendarPlus,
   CheckCircle2,
   Undo2,
-  Send,
   Star,
   Clock,
   FileCheck,
   X,
+  Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +28,8 @@ import { submitEvidenceAction, type EvidenceState } from "@/app/actions/evidence
 import {
   markConnectionCompleteAction,
   requestExtensionAction,
+  acceptExtensionAction,
+  rejectExtensionAction,
   markConnectionFailedAction,
   type CompletionState,
 } from "@/app/actions/completions";
@@ -256,8 +258,9 @@ export function ExtensionForm({ connectionId }: { connectionId: string }) {
     <form action={action} className="space-y-3 rounded-md border border-border p-3">
       <input type="hidden" name="connectionId" value={connectionId} />
       <p className="text-xs text-muted-foreground">
-        Requesting an extension moves the escrow release date further out. It is
-        only available while the task is open.
+        Requesting an extension asks the Seeker to move the deadline further out.
+        It is only available while the task is open, and the deadline does not
+        move until the Seeker accepts.
       </p>
       {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
       <div className="flex items-end gap-3">
@@ -274,7 +277,103 @@ export function ExtensionForm({ connectionId }: { connectionId: string }) {
           Request extension
         </Button>
       </div>
+      <div className="space-y-1">
+        <Label htmlFor="reason">Reason (optional)</Label>
+        <Textarea
+          id="reason"
+          name="reason"
+          rows={2}
+          placeholder="e.g. The target asked to reschedule the meeting."
+        />
+      </div>
     </form>
+  );
+}
+
+/**
+ * The Seeker's decision on a pending extension (§5.14).
+ *
+ * Accept moves the deadline and clears the yellow flag; reject leaves both
+ * untouched. Only the Seeker sees this — the Linker cannot decide their own.
+ */
+export function ExtensionDecision({
+  extensionId,
+  daysRequested,
+}: {
+  extensionId: string;
+  daysRequested: number;
+}) {
+  const router = useRouter();
+  const [acceptState, acceptAction, acceptPending] = useActionState<
+    CompletionState,
+    FormData
+  >(acceptExtensionAction, {});
+  const [rejectState, rejectAction, rejectPending] = useActionState<
+    CompletionState,
+    FormData
+  >(rejectExtensionAction, {});
+  const [showReject, setShowReject] = React.useState(false);
+
+  useEffect(() => {
+    if (acceptState?.success || rejectState?.success) router.refresh();
+  }, [acceptState, rejectState, router]);
+
+  return (
+    <div className="space-y-3 rounded-md border border-amber-300 bg-amber-50 p-3">
+      <p className="text-sm font-medium text-amber-800">
+        The Linker requested {daysRequested} more day(s).
+      </p>
+      <p className="text-xs text-amber-700">
+        Accepting moves the deadline and clears any missed-commitment flag.
+        Rejecting leaves the original deadline in force.
+      </p>
+
+      {(acceptState?.error || rejectState?.error) && (
+        <p className="text-sm text-destructive">
+          {acceptState?.error ?? rejectState?.error}
+        </p>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        <form action={acceptAction}>
+          <input type="hidden" name="extensionId" value={extensionId} />
+          <Button type="submit" size="sm" disabled={acceptPending}>
+            {acceptPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <Check className="h-4 w-4" aria-hidden="true" />
+            )}
+            Accept extension
+          </Button>
+        </form>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => setShowReject((v) => !v)}
+        >
+          {showReject ? "Cancel" : "Reject"}
+        </Button>
+      </div>
+
+      {showReject && (
+        <form action={rejectAction} className="space-y-2">
+          <input type="hidden" name="extensionId" value={extensionId} />
+          <div className="space-y-1">
+            <Label htmlFor="rejectionReason">Reason (optional)</Label>
+            <Textarea id="rejectionReason" name="rejectionReason" rows={2} />
+          </div>
+          <Button type="submit" size="sm" variant="destructive" disabled={rejectPending}>
+            {rejectPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <X className="h-4 w-4" aria-hidden="true" />
+            )}
+            Confirm rejection
+          </Button>
+        </form>
+      )}
+    </div>
   );
 }
 

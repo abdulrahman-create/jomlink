@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { NegotiationPanel } from "@/components/negotiation-panel";
+import { canRespondToLatestOffer, latestNegotiation } from "@/lib/negotiation";
 import { selectLinkerAction, type NegotiationState } from "@/app/actions/negotiations";
 import {
   isOpportunitySelectable,
@@ -77,18 +78,46 @@ export function ProposalCard({
   >(selectLinkerAction, initialState);
 
   const [negotiations, setNegotiations] = React.useState<ProposalNegotiationRow[]>([]);
+  const [threadLoaded, setThreadLoaded] = React.useState(false);
 
   // Load negotiation thread on mount — needed here to decide whether the Seeker
-  // may accept (you cannot accept your own standing offer).
+  // may accept (you cannot accept your own standing offer), and to keep the
+  // amount on the table fresh before Select commits it to escrow.
+  //
+  // `refreshKey` re-runs the fetch after a failed Select: the affordability
+  // check reads this thread but is computed on the server render, so without a
+  // re-fetch a stale thread would keep the button refusing for a reason that no
+  // longer holds.
+  const [refreshKey, setRefreshKey] = React.useState(0);
   React.useEffect(() => {
+    let cancelled = false;
     fetch(`/api/proposals/${proposal.id}/negotiations`)
       .then((r) => (r.ok ? r.json() : []))
-      .then((data) => setNegotiations(Array.isArray(data) ? data : []))
-      .catch(() => setNegotiations([]));
-  }, [proposal.id]);
+      .then((data) => {
+        if (cancelled) return;
+        setNegotiations(Array.isArray(data) ? data : []);
+        setThreadLoaded(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setNegotiations([]);
+        setThreadLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [proposal.id, refreshKey]);
 
-  const latest = negotiations.length > 0 ? negotiations[negotiations.length - 1] : null;
-  const canAcceptTerms = latest ? latest.from_role !== "SEEKER" : true;
+  const latest = latestNegotiation(negotiations);
+    // The Seeker may accept unless they authored the standing offer — you cannot
+    // agree with yourself. The panel applies the same rule to Counter-offer.
+    const canAcceptTerms = canRespondToLatestOffer(negotiations, "SEEKER");
+
+    // The Seeker pressed Accept: the terms are settled but the reward is not in
+    // escrow yet, and the panel (correctly) hides its controls. Say so — otherwise
+    // the page looks like the proposal simply stopped.
+    const awaitingEscrow =
+      proposal.status === "ACCEPTED" && opportunityStatus !== undefined;
 
   /**
    * The reward that will actually be committed to escrow.
@@ -130,8 +159,12 @@ export function ProposalCard({
   // an unaffordable Select is refused before the click, not after.
   // `needsConnection` re-opens an already-funded handoff, which must not be
   // re-charged, so affordability does not apply to it.
+  //
+  // Held back until the negotiation thread has loaded: `effectiveReward` depends
+  // on it, and flashing "you are short" against a stale figure is worse than a
+  // moment of waiting.
   const shortfall =
-    !needsConnection && typeof walletBalance === "number"
+    !needsConnection && threadLoaded && typeof walletBalance === "number"
       ? Math.max(0, effectiveReward - walletBalance)
       : 0;
   const canAfford = shortfall <= 0;
@@ -225,7 +258,8 @@ export function ProposalCard({
           currentDeliverable={proposal.agreed_deliverable ?? proposal.proposed_deliverable}
           status={proposal.status}
           negotiable={canNegotiate}
-          canAccept={canAcceptTerms}
+                    viewerRole="SEEKER"
+                    canAccept={canAcceptTerms}
           shortfall={shortfall}
         />
 
@@ -240,8 +274,12 @@ export function ProposalCard({
           </p>
         )}
 
-        {/* Actions */}
-        {canSelect && (
+        {/* Actions — rendered only when Select can actually succeed. The action
+            re-checks everything server-side, so a button the action will refuse
+            is a button that silently does nothing when pressed. Hold it back
+            until the thread has loaded too, so the amount being committed is the
+            negotiated one rather than the Linker's opening ask. */}
+        {canSelect && threadLoaded && canAfford && (
           <div className="flex flex-wrap gap-2">
             <form action={selectAction}>
               <input type="hidden" name="proposalId" value={proposal.id} />
@@ -262,7 +300,7 @@ export function ProposalCard({
               <Button
                 type="submit"
                 size="sm"
-                disabled={selectPending || !canAfford}
+                disabled={selectPending}
               >
                 {selectPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
@@ -309,8 +347,33 @@ export function ProposalCard({
           </p>
         )}
 
+        {awaitingEscrow && !needsConnection && (
+          <p className="text-xs font-medium text-amber-700">
+            Terms are agreed at {money(effectiveReward)} but the reward has not
+            been committed to escrow yet. Use <strong>Select this Linker</strong>{" "}
+            below to fund it and open the connection.
+          </p>
+        )}
+
         {selectState?.error && (
-          <p className="text-sm text-destructive">{selectState.error}</p>
+          <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3">
+            <p className="text-sm font-medium text-destructive">
+              {selectState.error}
+            </p>
+            {/* The button is normally withheld unless Select can succeed, so any
+                error here means the server disagreed with what the page rendered
+                (e.g. the terms moved while it was open). Re-fetch the thread so
+                the page and the server agree again. */}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-2"
+              onClick={() => setRefreshKey((k) => k + 1)}
+            >
+              Refresh terms
+            </Button>
+          </div>
         )}
       </CardContent>
     </Card>

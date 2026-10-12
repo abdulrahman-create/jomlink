@@ -17,6 +17,7 @@ import { computeFunding, roundMoney, postingDepositRefund } from "@/lib/funding"
 import { doubleEntry, accounts } from "@/lib/ledger";
 import { FEES, WALLET } from "@/lib/constants";
 import { createBill } from "@/lib/toyyibpay";
+import { isOpportunitySelectable } from "@/lib/status";
 
 export type TransactionState = {
   error?: string;
@@ -208,7 +209,9 @@ export async function cancelOpportunityAction(
     return { error: "This opportunity is already cancelled." };
   }
   // Once a Linker is selected the reward is escrowed; cancel is not available.
-  if (opp.linker_id || Number(opp.funded_amount || 0) > 0) {
+  // `funded_amount` is the real signal — `opportunities` has no `linker_id`
+  // column, so reading one is always undefined and silently disables this guard.
+  if (Number(opp.funded_amount || 0) > 0 || !isOpportunitySelectable(opp.status)) {
     return {
       error:
         "This opportunity already has a selected Linker. It can no longer be cancelled — a failed or completed connection is refunded through the normal flow instead.",

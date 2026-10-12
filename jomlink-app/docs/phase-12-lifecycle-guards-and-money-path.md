@@ -7,9 +7,13 @@
 > **at least nine places**, and that two of the accept paths could mutate state
 > with no money behind them. Fixed by centralising the state machine, wiring
 > notification deep-links, and putting the wallet check on both accept paths.
-> `npm run build` passes, `npx tsc --noEmit` passes, `eslint` clean.
+> The unilateral extension flow (§5.14) was also rebuilt as request → Seeker
+> decision. `npm run build` passes, `npx tsc --noEmit` passes, `eslint` clean,
+> `npm test` 49 passing.
 >
-> **No migration required.** All changes are application code.
+> ⚠️ **One migration is required and NOT yet applied:**
+> `supabase/phase-12-extension-approval.sql`. The extension UI will error until it
+> is run. Everything else is application code.
 >
 > ⚠️ **One pre-existing data issue is left unresolved by design** — see
 > *Known unresolved data* at the end. It concerns escrow already committed.
@@ -254,6 +258,53 @@ The negotiation thread read *"Accept it to lock the terms"* even when the viewer
 
 ---
 
+### 11. Extension was unilateral — the Linker decided their own accountability 🟠
+
+**Symptom.** Documented as a known gap: *"A Linker self-approves an extension,
+which also auto-clears their own yellow flag and pushes their escrow release
+date."*
+
+Blueprint §5.14 is explicit:
+
+> *"A Linker may request an extension… **Accept** / **Reject** … If accepted, the
+> new deadline becomes the official Opportunity deadline and the yellow flag is
+> cleared for the original deadline. If rejected, the original deadline remains
+> applicable and the yellow flag remains raised."*
+
+The code did none of that. `requestExtensionAction` applied the extension
+immediately — moving `auto_release_at` and setting `release_status = "EXTENDED"` —
+and then called `clearMissedCommitmentFlag` on the Linker's own request. Its own
+docstring claimed *"Seeker approves it"*, which was never true.
+
+The consequence is the inversion the gap note described: the mechanism exists to
+hold a Linker accountable for a missed deadline, and the Linker was the party
+deciding whether to hold themselves accountable. A Linker could postpone their
+own escrow release and erase their own missed-commitment signal at will.
+
+**Fix.** A real request/decision flow, mirroring the deadline flow (§5.6.1):
+
+| Action | Who | Effect |
+|--------|-----|--------|
+| `requestExtensionAction` | Linker | Creates a `REQUESTED` row. **Moves nothing.** |
+| `acceptExtensionAction` | **Seeker** | Moves the deadline, sets `EXTENDED`, clears the flag |
+| `rejectExtensionAction` | **Seeker** | Records the rejection; deadline and flag untouched |
+
+New table `jomlink.connection_extensions` (migration
+`supabase/phase-12-extension-approval.sql`) records the request, the deadline in
+force at the time, the reason, and who decided — §5.14 requires the reason and
+both parties' positions to form part of the permanent evidence of record (§9.11).
+A **partial unique index** enforces at most one `REQUESTED` row per connection, so
+"the pending extension" is never ambiguous.
+
+The UI now differs by role: the Linker sees that a request is awaiting a decision
+(and cannot re-request), the Seeker sees Accept / Reject with an optional reason.
+
+> ⚠️ **This migration is not yet applied.** The code queries a table that does not
+> exist until it is run, so the extension UI will error until then. See
+> *Outstanding migrations* in `PROJECT-TRACKING.md`.
+
+---
+
 ## The pattern worth naming
 
 Phase 10 and 11 each documented a recurring bug shape. This phase adds a third,
@@ -294,6 +345,9 @@ already existed, and the defect was the copies that had drifted from it.
 | `src/lib/status.ts` additions | Proposal / connection / opportunity state machine (single authority) |
 | `src/lib/notification-links.ts` | Notification → role-relative deep-link resolver |
 | `src/components/negotiation-panel.tsx` | Shared negotiation thread + counter/accept controls |
+| `supabase/phase-12-extension-approval.sql` | `connection_extensions` table + status enum (⚠️ **not yet applied**) |
+| `src/lib/status.test.ts` · `notification-links.test.ts` · `extensions.test.ts` | 49 tests |
+| `vitest.config.ts` | Test runner config (`@/*` alias mirrors tsconfig) |
 
 **Modified (behavioural)**
 
@@ -301,17 +355,20 @@ already existed, and the defect was the copies that had drifted from it.
 |------|--------|
 | `src/app/actions/proposals.ts` | Submit + withdraw notifications |
 | `src/app/actions/negotiations.ts` | Opportunity-terminal guards; affordability on accept |
+| `src/app/actions/completions.ts` | Extension split into request / accept / reject |
 | `src/app/actions/notifications.ts` | `openNotificationAction` (mark-read + safe redirect) |
 | `src/app/actions/evidence.ts` | Missing connection-closed guard |
 | `src/app/actions/appointments.ts` | Missing connection-closed guard |
-| `src/app/actions/deadlines.ts` · `completions.ts` · `progress-reports.ts` | Delegate to shared predicate |
+| `src/app/actions/deadlines.ts` · `progress-reports.ts` | Delegate to shared predicate |
 | `src/app/api/proposals/[id]/negotiations/route.ts` | Party-only authorization |
 | `src/app/dashboard/notifications/page.tsx` | Clickable rows, read-on-click |
 | `src/app/dashboard/proposals/page.tsx` | Negotiation panel for Linkers |
 | `src/app/dashboard/connections/page.tsx` | Seeker connections list; role-aware empty state |
-| `src/app/dashboard/connections/[id]/page.tsx` | Hide evidence/appointment forms when closed |
+| `src/app/dashboard/connections/[id]/page.tsx` | Hide evidence/appointment forms when closed; extension decision UI |
+| `src/app/dashboard/connections/[id]/actions.tsx` | Extension reason field; `ExtensionDecision` component |
 | `src/app/opportunities/[id]/proposals/page.tsx` | Pass opportunity status + wallet balance |
 | `src/app/opportunities/[id]/proposals/proposal-card.tsx` | Effective reward, affordability, closed-state copy |
+| `src/lib/queries.ts` · `jomlink-types.ts` | Extension queries + `ConnectionExtensionRow` |
 
 ---
 
@@ -322,7 +379,7 @@ already existed, and the defect was the copies that had drifted from it.
 | `npx tsc --noEmit` | ✅ clean |
 | `npx eslint` (changed files) | ✅ clean |
 | `npm run build` | ✅ 31/31 pages |
-| `npm test` | ✅ 39 tests, 2 files |
+| `npm test` | ✅ 49 tests, 3 files |
 | Completed project proposals page | ✅ `buttons: []` |
 | Active project proposals page | ✅ controls present, RM 2,100 in all four places |
 | Seeker connections list | ✅ 1 connection visible |
@@ -348,6 +405,7 @@ Added `vitest` (3.2.7) with `npm test`. 39 tests across two files:
 |------|--------|
 | `src/lib/status.test.ts` | All five lifecycle predicates, including the SELECTED negotiation/selection asymmetry and the deny-list behaviour on unrecognised statuses |
 | `src/lib/notification-links.test.ts` | Role-relative routing for every notification family, plus malformed `data` and a same-origin assertion across all types × roles |
+| `src/lib/extensions.test.ts` | The §5.14 decision table: only the Seeker may decide, only an ACCEPTED extension moves the deadline or clears the flag |
 
 The suite was **verified to have teeth**: removing `"SELECTED"` from
 `PROPOSAL_TERMINAL_STATUSES` — i.e. reintroducing the exact bug reported as

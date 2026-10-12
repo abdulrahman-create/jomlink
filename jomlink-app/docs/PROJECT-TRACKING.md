@@ -42,8 +42,16 @@ at a glance.
 
 ## Outstanding migrations
 
-**None.** Phase 11 needed no schema change — the database was already correct;
-the bugs were in how the app addressed it.
+**One migration is required and NOT yet applied.**
+
+| Migration | Needed for | Status |
+|-----------|-----------|--------|
+| `supabase/phase-12-extension-approval.sql` | Extension request/approval flow (§5.14) | ⚠️ **NOT APPLIED** — run it in Supabase → SQL Editor |
+
+> ⚠️ **The extension UI will error until this is applied.** The code queries
+> `jomlink.connection_extensions`, which does not exist yet. PostgREST cannot run
+> DDL and the Postgres port is not reachable from the dev environment, so this
+> must be run by hand. The file is idempotent — safe to re-run.
 
 Two items from earlier phases may still be un-run on an existing database:
 
@@ -68,7 +76,7 @@ Ordered by risk to the pilot, not by effort.
 | # | Item | Severity | Notes |
 |---|------|----------|-------|
 | 1 | **Stale escrow: RM2,200 on an RM1,500 opportunity** | 🔴 **Urgent** | Connection `255a7894-afa2-4474-9c67-123e001746d2` is `COMPLETED` and will release **RM2,200** to the Linker; the opportunity's reward is **RM1,500**. Created by the pre-Phase-12 reward bug (escrow took the Linker's opening ask). The fix stops new occurrences but does not correct this row. Needs a product decision. |
-| 2 | **Extension is unilateral** | 🟠 High | A Linker self-approves an extension, which also **auto-clears their own yellow flag** and pushes their escrow release date. The extension does nothing to constrain the party it is meant to hold accountable. Consider Linker-requests / Seeker-approves, mirroring the deadline flow. |
+| 2 | **Extension flow needs its migration applied** | 🟠 High | The unilateral-extension bug is **fixed in code** (Linker requests, Seeker accepts/rejects, only acceptance moves the deadline and clears the flag). But `supabase/phase-12-extension-approval.sql` is **not yet applied**, so the extension UI will error until it is run. |
 | 3 | Notification delivery is **in-app only** | 🟡 Medium | `notification_channel` supports EMAIL/SMS/PUSH; no worker sends them. Members must open the app to learn anything. |
 | 4 | Live payment gateway | 🟡 Medium | ToyyibPay is sandbox-only; production keys + webhook tunnel still needed. |
 | 5 | **Match score trusts self-declared relationships** | 🟡 Medium | A member can claim any relationship and collect up to 26 points. `relationship_verifications` exists in Prisma for exactly this and is unbuilt. Scoring is a signal, not a gate. |
@@ -120,6 +128,8 @@ that reached `ACCEPTED` with no funds behind it.
 | Connection closed? | 6 | 2 missing | Evidence submitted on completed jobs |
 | Proposal reward to escrow | 2 | 2 | Wrong amount charged (RM2,200 vs RM1,500) |
 | Affordability check | 2 | 1 missing | `ACCEPTED` with no escrow and no funds |
+| Whose turn to counter? | 2 | 2 (both asked only "may I accept?") | Counter-offer live for the offer's author — self-bidding |
+| Existing `opportunities.linker_id`? | 4 | 4 (column never existed) | Every Select failed; cancel + apply guards silently disabled |
 
 **Rules of thumb:**
 - **(a)** Check the UI's visibility condition matches the lifecycle state the
@@ -135,6 +145,24 @@ that reached `ACCEPTED` with no funds behind it.
 - **Before adding a status check, search for the existing one.** Divergence, not
   absence, is the usual defect — put the predicate in `src/lib/status.ts` so the
   action and the UI cannot drift apart again.
+- **A gate that answers one question is not a gate that answers its sibling.**
+  Both negotiation surfaces asked *"may I accept?"* and neither asked *"may I
+  counter?"*, so Counter-offer stayed live for the author of the standing offer
+  and a member could out-bid themselves. When two controls share a precondition,
+  derive both from one predicate (`src/lib/negotiation.ts`) rather than writing
+  the condition twice.
+- **A column that appears in the TypeScript type but not in the database is worse
+  than a missing one.** `OpportunityRow.linker_id` was read in four places; reads
+  evaluate to `undefined` and quietly disable the guard, while a *write* makes
+  PostgreSQL reject the whole update and the feature dies with a generic error.
+  A hand-maintained row interface is not evidence that a column exists — check
+  `prisma/schema.prisma` (and remember it mirrors the live schema, it does not
+  drive it). The fix here was to correct the type; that alone made the compiler
+  find every remaining phantom read.
+- **`ACCEPTED` and `SELECTED` are different states, and only one locks terms.**
+  `acceptTermsAction` agrees terms (no money); `selectLinkerAction` agrees terms
+  *and* commits escrow. Treating `ACCEPTED` as terminal stranded the flow one
+  step before the money moved.
 - **When a rule depends on two entities, gate on both.** A child row (`proposal`)
   is not rewritten when its parent's state (`opportunity`) advances — completing a
   connection leaves the proposal reading `Selected` or `Under review` forever.

@@ -403,6 +403,14 @@ model opportunities {
   confidentiality     ConfidentialityLevel   @default(PUBLIC)
   additionalRequirements String?
   status              OpportunityStatus      @default(DRAFT)
+  // NOTE: there is deliberately NO `linkerId` here, and no `linker_id` column in
+  // the database. The SELECTED Linker is recorded by
+  // `linker_proposals.status = 'SELECTED'` plus the `connections` row created at
+  // selection. A `linker_id` field once existed in `OpportunityRow` and was read
+  // by `selectLinkerAction`, the cancel guard, and the apply guard: PostgreSQL
+  // rejected the resulting UPDATE with "column does not exist", so every Select
+  // threw and no proposal could ever be selected. Do not reintroduce it without a
+  // migration — and if you do add it, it must be populated here.
   // Funding
   activationFee       Decimal?               @db.Decimal(12, 2)
   fundedAmount        Decimal?               @db.Decimal(12, 2)
