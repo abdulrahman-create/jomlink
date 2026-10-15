@@ -121,6 +121,15 @@ export default async function OpportunityDetailPage({
     proposals.find((p) => p.status === "ACCEPTED") ??
     null;
 
+  // The connection (if one exists) — its `release_status` tells us whether the
+  // reward has already been settled. Since the Seeker's completion releases the
+  // reward immediately, the manual "Release reward" card is a RECOVERY action
+  // only: it must not appear once the money has already moved.
+  const connection = isOwner ? await getConnectionByOpportunity(opp.id) : null;
+  const releaseSettled = ["RELEASED", "REFUNDED", "VOID", "HELD"].includes(
+    (connection?.release_status ?? "").toUpperCase()
+  );
+
   // The Seeker may edit while the status allows it AND no Linker has submitted
   // a proposal yet — a proposal freezes the terms it was based on.
   const canEdit =
@@ -274,14 +283,17 @@ export default async function OpportunityDetailPage({
               </CardContent>
             </Card>
           )}
-        {isOwner && opp.status === "COMPLETED" && selected && (
+        {isOwner && opp.status === "COMPLETED" && selected && !releaseSettled && (
           <Card className="mb-6 border-primary/30">
             <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
               <div className="text-sm">
-                <p className="font-semibold">Completed.</p>
+                <p className="font-semibold">Reward not yet released</p>
                 <p className="text-muted-foreground">
-                  Release the escrowed reward to the selected Linker. A 10% service fee is
-                  deducted and kept by the platform.
+                  The reward normally releases to the Linker the moment you mark
+                  the connection complete. It hasn&apos;t been released yet —
+                  release it now. A 10% service fee is deducted and kept by the
+                  platform. (If you take no action, it releases automatically
+                  after the safety-net window.)
                 </p>
               </div>
               <ReleaseReward opportunityId={opp.id} linkerId={selected.linker_id} />

@@ -29,7 +29,7 @@ We build **phase by phase**, validating each phase before moving on. This plan d
 | Schema isolation | `db: { schema: 'jomlink' }` at `createClient` | Headers are derived at construction; per-call `.schema()` is silently dropped |
 | Auth | Supabase Auth (self-hosted) | Anon key public; SERVICE_ROLE server-only; users tagged `app='jomlink'` to avoid conflicts |
 | Auth isolation | `app='jomlink'` tag check | `getCurrentUser()` only matches/link Jomlink-tagged users |
-| Payments | Sandbox/stubbed gateway (planned) | 10% refundable posting deposit (wallet auto-deduct, less RM10 listing fee on pre-selection cancel), full reward settlement at Linker acceptance, escrow, 10% linker fee, 7-day auto-release |
+| Payments | Sandbox/stubbed gateway (planned) | 10% refundable posting deposit (wallet auto-deduct, less RM10 listing fee on pre-selection cancel), full reward settlement at Linker acceptance, escrow, 10% linker fee, reward released on completion with a 7-day fallback |
 | Verification | Simplified (status + badge) | Full document KYC deferred |
 
 ---
@@ -68,6 +68,9 @@ Browser
 | **9** | Deadline setting + progress report thread + yellow flag | ✅ Done |
 | **10** | Notifications + navigation + workflow guards | ✅ Done |
 | **11** | Match score + relationship save + schema routing | ✅ Done |
+| **12** | Lifecycle guards + notification deep-links + money path | ✅ Done |
+| **13** | Appointment notifications + track records + deadline warnings | ✅ Done |
+| **14** | Verification-gated escrow release | 📋 Planned (spec) |
 
 > Each phase has its own detail page in this `docs/` folder.
 
@@ -133,6 +136,19 @@ Browser
 > *before* a deadline passes while work is incomplete (in-app banner +
 > notification + a cron-ready sweep at `/api/connections/deadline-sweep`).
 > **No migration required.**
+
+> **Phase 14 (2026-10-15)** closes the money-path loophole: the Seeker was the
+> **sole arbiter of both "completion" and "payment release"** — their click *is*
+> the payment. The model is inverted: the Seeker **confirms**, the platform
+> **verifies**, and only the platform **releases** escrow
+> (`EVIDENCE_SUBMITTED → AWAITING_SEEKER_CONFIRMATION → AWAITING_VERIFICATION →
+> VERIFIED → RELEASED`), with timeout sweeps so no party can stall or unilaterally
+> trigger payment. Risk scoring (`src/lib/verification.ts`) holds HIGH-risk
+> completions (first-time pair, instant evidence, no progress reports, no target
+> acknowledgement) for manual review. The Seeker-facing `markConnectionCompleteAction`
+> is **deleted**. ⚠️ **Requires migration**
+> `supabase/phase-14-verification-gated-release.sql` — not yet applied. See
+> `phase-14-verification-gated-release.md`.
 
 ---
 
@@ -201,7 +217,7 @@ Already built:
 - Posting deducts the 10% deposit; accepting a Linker settles the **full reward** into escrow via `transaction_ledger` ✅
 - Reward release on completion with 10% linker service fee deducted (net payout) ✅
 - Refund flow for failed/cancelled/expired opportunities ✅
-- Payout + refund records; 7-day auto-release rule (cron-ready) ✅
+- Payout + refund records; reward released **immediately on completion**, with a 7-day **fallback** sweep (cron-ready) ✅
 - Wallet page (`/dashboard/wallet`) with balance, transactions, payouts, refunds ✅
 - Build passes ✅
 
@@ -209,7 +225,7 @@ Already built:
 - Connection created on Linker selection; connection list + detail pages (`/dashboard/connections`) ✅
 - Appointment proposal (Linker) + Seeker acknowledge/reject ✅
 - Evidence submission by Linker with status review ✅
-- Completion review → opportunity COMPLETED + schedules 7-day payout release ✅
+- Completion review → opportunity COMPLETED + **releases the reward immediately** (7-day fallback safety net) ✅
 - Extension request + failed-opportunity handling ✅
 - Mutual ratings/reviews post-completion ✅
 - Reputation metrics (success rate, avg rating) updated + shown on public profile ✅
@@ -308,6 +324,12 @@ Already built:
   - **Data repaired during the session (with explicit approval).** Proposal `7bb3dcbc…` was flipped to `ACCEPTED` by the missing-affordability bug and reverted to `UNDER_REVIEW` with its agreed fields cleared; the single test counter-offer row was deleted. **Left unresolved:** the stale **RM2,200 escrow on an RM1,500 opportunity** — a live financial commitment on a `COMPLETED` connection that needs a product decision.
   - **Extension was unilateral (bug, §5.14).** The Linker applied their own extension — moving `auto_release_at`, setting `release_status = "EXTENDED"` — and then cleared their own yellow flag. The docstring claimed *"Seeker approves it"*, which was never true. The mechanism exists to hold a Linker accountable for a missed deadline, so the Linker was deciding whether to hold themselves accountable: they could postpone their own escrow release and erase their own missed-commitment signal at will. Rebuilt as a real request/decision flow mirroring the deadline flow: `requestExtensionAction` (Linker) creates a `REQUESTED` row and **moves nothing**; `acceptExtensionAction` / `rejectExtensionAction` (Seeker only) decide, and only acceptance moves the deadline and clears the flag. New `jomlink.connection_extensions` table records the request, the deadline in force, the reason and who decided (§5.14 requires this to be evidence of record, §9.11), with a partial unique index enforcing one open request per connection. UI differs by role: the Linker sees a pending state and cannot re-request; the Seeker sees Accept/Reject with an optional reason. ⚠️ **Migration `supabase/phase-12-extension-approval.sql` is required and not yet applied** — the extension UI errors until it is run.
   - **Verification.** `tsc`, `eslint` and `npm run build` (31/31 pages) all clean; behaviour checked in the browser on both accounts. **Not verified:** the `BOTH`-role de-duplication path in the connections list (no such test account was used) — reasoned, not exercised. A **test suite was added** (`vitest`, `npm test`) covering the `status.ts` predicates, `notification-links.ts` and the §5.14 extension decision table — 49 tests, and confirmed to fail when the SELECTED rule is reverted. Coverage is pure logic only: nothing yet exercises actions, the database, or a request context.
+- **2026-10-15** — **Phase 14: verification-gated escrow release.** See `phase-14-verification-gated-release.md`. ⚠️ **Requires migration** `supabase/phase-14-verification-gated-release.sql` (not yet applied).
+  - **The Seeker was the sole arbiter of both completion AND payment release (loophole, §5.7).** `markConnectionCompleteAction` was Seeker-only and called `settleRewardRelease()` in the *same* action — the Seeker's click **was** the payment, with no evidence gate and no platform verification. This enabled collusion (fake completion → withdraw), free meetings (Seeker ghosts → Linker unpaid, since the 7-day fallback only fires on a *recorded* completion), and toothless disputes (release is immediate). The model is inverted: the Seeker **confirms**, the platform **verifies**, and only the platform **releases**. New state machine `EVIDENCE_SUBMITTED → AWAITING_SEEKER_CONFIRMATION → AWAITING_VERIFICATION → VERIFIED → RELEASED`. `markConnectionCompleteAction` is **deleted**; `confirmEvidenceAction` (Seeker: confirm → `AWAITING_VERIFICATION`, **no money moves**; reject → `DISPUTED` + escrow `HELD`) and `verifyCompletionAction` (platform, permission-gated) replace it.
+  - **Anti-collusion gates (§5.12.1).** New `src/lib/verification.ts` scores every completion (`scoreCompletionRisk`): HIGH risk — instant evidence, a first-time Linker **and** first-time Seeker, zero progress reports, or a meeting-type opportunity with no `TARGET_ACKNOWLEDGEMENT` — is held (`release_hold_until`) for manual review; LOW/MEDIUM releases. A post-release clawback window is defined.
+  - **Timeouts so no party can stall.** `runVerificationSweep` (`/api/connections/verification-sweep`) auto-advances a silent Seeker, auto-verifies a stalled platform, and auto-releases an elapsed hold. `runAutoReleaseCheck` remains the 7-day fallback.
+  - **Shared money-path core.** `completeAndRelease` + `verifyCompletionCore` live in `src/lib/completion.ts` (plain module, not `"use server"`) so the sweep can call them without exposing a new action endpoint.
+  - **Verification.** `npx tsc --noEmit` clean · `eslint` clean · `npm run build` passes (44 routes) · `npm test` **88 passing** across 6 files (Phase 14 added `src/lib/verification.test.ts`, 14 cases, and 4 predicate tests in `status.test.ts`).
 - **2026-10-12** — **Phase 13: appointment notifications, rejection recovery, track records & deadline warnings.** See `phase-13-appointments-and-deadline-warnings.md`. **No migration required.**
   - **Appointment proposal notified nobody (bug).** Reported as *"seeker dint get notification on appointment date from linker. it should popup so seeker will notice it."* `proposeAppointmentAction` persisted the appointment and called `revalidatePath(...)` — which refreshes the client but writes no row — and never imported `@/lib/notify`. Added `APPOINTMENT_PROPOSED` to the Seeker; `APPOINTMENT_ACKNOWLEDGED` / `APPOINTMENT_REJECTED` to the Linker on the Seeker's decision. `APPOINTMENT_*` now routes to the connection workspace in `notification-links.ts`, and maps to the `Handshake` icon on the notifications page (it previously fell through to the generic `Info`).
   - **Notification contrast (UX).** Reported as *"make notification more pop out … change it color to more contrast."* The dashboard unread nudge became a solid-carmine card with white text (~8:1 contrast), a pulsing white dot and a white count pill; unread rows gained a 4px carmine left border and shadow; the "New" badge became solid carmine. *Follow-up: a `motion-reduce` guard on the pulse.*

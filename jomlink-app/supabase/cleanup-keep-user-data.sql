@@ -47,14 +47,13 @@ union all select 'kyc_biometrics',          count(*) from jomlink.kyc_biometrics
 union all select 'kyc_records',             count(*) from jomlink.kyc_records
 union all select 'audit_logs',              count(*) from jomlink.audit_logs
 union all select 'relationships',           count(*) from jomlink.relationships
-union all select 'relationship_verifications', count(*) from jomlink.relationship_verifications
 union all select 'organisations',           count(*) from jomlink.organisations
 union all select '-- KEEPING --',            null::bigint
-union all select 'users (kept)',            count(*) from jomlink.users
-union all select 'member_profiles (kept)',  count(*) from jomlink.member_profiles
-union all select 'employment_history (kept)', count(*) from jomlink.employment_history
-union all select 'business_profiles (kept)',  count(*) from jomlink.business_profiles
-union all select 'admin_members (kept)',    count(*) from jomlink.admin_members
+--union all select 'users (kept)',            count(*) from jomlink.users
+--union all select 'member_profiles (kept)',  count(*) from jomlink.member_profiles
+--union all select 'employment_history (kept)', count(*) from jomlink.employment_history
+--union all select 'business_profiles (kept)',  count(*) from jomlink.business_profiles
+--union all select 'admin_members (kept)',    count(*) from jomlink.admin_members
 order by table_name;
 
 
@@ -69,11 +68,11 @@ order by table_name;
 begin;
 
 -- Dependent / leaf tables first (children before parents).
-delete from jomlink.kyc_biometrics;                 -- → users, kyc_records
-delete from jomlink.kyc_records;                    -- → users
+--delete from jomlink.kyc_biometrics;                 -- → users, kyc_records
+--delete from jomlink.kyc_records;                    -- → users
 delete from jomlink.audit_logs;                     -- → users (admin)
 delete from jomlink.notifications;                  -- → users
-delete from jomlink.reputation_metrics;             -- → users
+--delete from jomlink.reputation_metrics;             -- → users
 delete from jomlink.reviews;                        -- → opportunities, users
 delete from jomlink.disputes;                       -- → opportunities, connections
 delete from jomlink.payouts;                        -- → transactions
@@ -86,9 +85,8 @@ delete from jomlink.connections;                    -- → opportunities, linker
 delete from jomlink.proposal_negotiations;          -- → linker_proposals
 delete from jomlink.linker_proposals;               -- → opportunities, users, relationships
 delete from jomlink.opportunities;                  -- → users, business_profiles
-delete from jomlink.relationship_verifications;     -- → relationships
-delete from jomlink.relationships;                  -- → users, organisations
-delete from jomlink.organisations;                  -- → relationships
+--delete from jomlink.relationships;                  -- → users, organisations
+--delete from jomlink.organisations;                  -- → relationships
 
 commit;
 
@@ -117,7 +115,6 @@ commit;
 --   jomlink.proposal_negotiations,
 --   jomlink.linker_proposals,
 --   jomlink.opportunities,
---   jomlink.relationship_verifications,
 --   jomlink.relationships,
 --   jomlink.organisations
 -- restart identity cascade;

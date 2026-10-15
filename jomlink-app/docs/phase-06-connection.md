@@ -46,7 +46,7 @@
 - [x] Evidence can be submitted and marked (simple) complete
 - [x] Evidence supports a document attachment (private bucket, signed-URL access)
 - [x] Both parties are notified of connection events from the counterparty **or** an admin
-- [x] Completion releases the escrow payout (via Phase 5)
+- [x] Completion releases the escrow payout immediately (via Phase 5; the 7-day window is a fallback only)
 - [x] Members can rate/review each other post-completion
 - [x] Reputation metrics update correctly
 - [x] Linker can request a task deadline; Seeker can accept/reject it
@@ -75,9 +75,9 @@
 
 ## Tasks
 
-- [ ] 6.1 Appointment proposal + acknowledgement
-- [ ] 6.2 Evidence submission
-- [ ] 6.3 Completion review → release payout
+- [x] 6.1 Appointment proposal + acknowledgement
+- [x] 6.2 Evidence submission
+- [x] 6.3 Completion review → release payout (immediate; 7-day fallback)
 - [ ] 6.4 Extension request/approval
 - [ ] 6.5 Failed opportunity flow
 - [ ] 6.6 Reviews + ratings
@@ -134,8 +134,9 @@
   disappears once the member has reviewed, and the server enforces all three rules.
 - **Extensions are only available while the task is open**
   (`IN_PROGRESS` / `AWAITING_VERIFICATION`). They are rejected on a closed connection:
-  `auto_release_at` **is** the escrow release timer, so extending a finished job would
-  delay the Linker's own payout and erroneously clear their yellow flag.
+  a closed connection has already released the escrow (release is immediate on
+  completion), so extending a finished job would move the (now historical)
+  `auto_release_at` fallback date and erroneously clear the yellow flag.
   *Note: the extension is currently unilateral — the Linker self-approves.*
 
 ### Notifications (§9.14)

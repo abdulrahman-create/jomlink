@@ -1,16 +1,21 @@
 # Jomlink — Project Tracking Board
 
-**Updated:** 2026-10-12 · **Build status:** ✅ `npm run build` passes · `npx tsc --noEmit` passes · `eslint` clean · `npm test` 67 passing
+**Updated:** 2026-10-15 · **Build status:** ✅ `npm run build` passes · `npx tsc --noEmit` passes · `eslint` clean · `npm test` 67 passing
 
 Single-page status view. Narrative detail lives in `00-project-plan.md` and the
 per-phase docs; this file answers *"where are we, what's next, what's blocking"*
 at a glance. For a reverse-chronological *"what happened when"*, see
 [`../../CHANGELOG.md`](../../CHANGELOG.md).
 
-> **Most recent work: post-Phase-13 refinements (2026-10-12)** — optional proposal
-> reward, escrow **payout visibility** for Linkers, and **bank withdrawal
-> requests** (member → admin-settled).
-> `supabase/phase-payout-request.sql` —  . `npm test` **67 passing**.
+> **Most recent work: Phase 14 BUILT — verification-gated escrow release (2026-10-15).**
+> The Seeker no longer pays: they **confirm** the evidence, the platform
+> **verifies**, and only the platform **releases** escrow
+> (`EVIDENCE_SUBMITTED → AWAITING_SEEKER_CONFIRMATION → AWAITING_VERIFICATION →
+> VERIFIED → RELEASED`), with timeout sweeps so no party can stall or unilaterally
+> trigger payment. The Seeker-facing release action is **deleted**. Migration
+> `supabase/phase-14-verification-gated-release.sql` **still needs applying**.
+> `tsc` clean, `npm run build` passes, `npm test` **88 passing** (was 67).
+> See `phase-14-verification-gated-release.md`.
 
 ---
 
@@ -33,6 +38,7 @@ at a glance. For a reverse-chronological *"what happened when"*, see
 | 11 | Match score + relationship save + schema routing | ✅ Done | `phase-11-match-score-and-data-layer.md` |
 | 12 | Lifecycle guards + notification deep-links + money path | ✅ Done | `phase-12-lifecycle-guards-and-money-path.md` |
 | 13 | Appointment notifications + track records + deadline warnings | ✅ Done | `phase-13-appointments-and-deadline-warnings.md` |
+| 14 | Verification-gated escrow release | ✅ Done (⚠️ migration not applied) | `phase-14-verification-gated-release.md` |
 
 **MVP is feature-complete.** Remaining work is production hardening (below).
 
@@ -45,12 +51,13 @@ at a glance. For a reverse-chronological *"what happened when"*, see
 
 ## Outstanding migrations
 
-**Two migrations are required and NOT yet applied.**
+**Three migrations are required and NOT yet applied.**
 
 | Migration | Needed for | Status |
 |-----------|-----------|--------|
 | `supabase/phase-12-extension-approval.sql` | Extension request/approval flow (§5.14) |  **APPLIED** — run it in Supabase → SQL Editor |
 | `supabase/phase-payout-request.sql` | Bank withdrawal requests (member bank details, `WITHDRAWAL` transaction type, payout-request columns) |
+| `supabase/phase-14-verification-gated-release.sql` | Verification-gated escrow release (Phase 14 — **built; enum values + 9 `connections` columns**) | ⚠️ **NOT APPLIED** — run it in Supabase → SQL Editor |
 
 > ⚠️ **The extension UI will error until this is applied.** The code queries
 > `jomlink.connection_extensions`, which does not exist yet. PostgREST cannot run
@@ -102,6 +109,7 @@ Ordered by risk to the pilot, not by effort.
 
 | # | Item | Severity | Notes |
 |---|------|----------|-------|
+| 0 | ~~**Seeker is the sole arbiter of completion AND payment release**~~ | ✅ **Fixed (Phase 14)** | The Seeker-facing release action is **deleted**. The Seeker now only **confirms** (`confirmEvidenceAction`); the platform **verifies** and **releases** (`verifyCompletionCore`), with timeouts (`runVerificationSweep`) so no party can stall. **Requires `supabase/phase-14-verification-gated-release.sql` to be applied.** |
 | 1 | **Stale escrow: RM2,200 on an RM1,500 opportunity** | 🔴 **Urgent** | Connection `255a7894-afa2-4474-9c67-123e001746d2` is `COMPLETED` and will release **RM2,200** to the Linker; the opportunity's reward is **RM1,500**. Created by the pre-Phase-12 reward bug (escrow took the Linker's opening ask). The fix stops new occurrences but does not correct this row. Needs a product decision. |
 | 2 | **Extension flow needs its migration applied** | 🟠 High | The unilateral-extension bug is **fixed in code** (Linker requests, Seeker accepts/rejects, only acceptance moves the deadline and clears the flag). But `supabase/phase-12-extension-approval.sql` is **not yet applied**, so the extension UI will error until it is run. |
 | 3 | Notification delivery is **in-app only** | 🟡 Medium | `notification_channel` supports EMAIL/SMS/PUSH; no worker sends them. Members must open the app to learn anything. The Phase 13 deadline warning is therefore only seen on next visit — email/push would strengthen it. |

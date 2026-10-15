@@ -9,7 +9,7 @@
 1. Implement the **transaction engine**: funding, escrow holding, fees, refunds, payouts.
 2. Model the **10% refundable posting deposit** (Seeker, charged at post time, less a flat **RM10 non-refundable listing fee** if cancelled before Linker selection) and the **10% service fee** (Linker).
 3. Implement **full reward settlement** at Linker acceptance (reward held in escrow).
-4. Implement the **7-day auto-release** after completion.
+4. Release the reward **immediately on completion** (see the 2026-10-15 update below); a **7-day fallback** pays out a completed-but-unreleased connection.
 5. Keep a **double-entry transaction ledger** for auditability.
 
 ---
@@ -25,7 +25,7 @@
 - 10% Linker service fee deduction on payout
 - Refund mechanism (failed opportunity → reward + applicable fee back to Seeker)
 - Payout record for Linker
-- 7-day auto-release scheduling (computed / cron-ready)
+- **7-day fallback** auto-release sweep (cron-ready) for a completed-but-unreleased connection
 - Payment gateway **stubbed** (sandbox reference, no real money)
 
 ### Out of scope (later phases)
@@ -42,7 +42,7 @@
 - [x] Accepting a Linker settles the full reward into escrow
 - [x] Completion → payout with 10% fee deducted, net to Linker
 - [x] Failed opportunity → reward refunded to Seeker (deposit refunded separately, less the listing fee, when cancelled before Linker selection)
-- [x] 7-day auto-release logic implemented (cron-ready, FEES.RELEASE_WAIT_DAYS)
+- [x] Reward released **immediately on completion**; **7-day fallback** sweep implemented (cron-ready, FEES.RELEASE_WAIT_DAYS)
 - [x] All money movement is traceable via `transaction_ledger`
 
 ---
@@ -59,13 +59,13 @@
 
 ## Tasks
 
-- [ ] 5.1 Funding + activation fee
-- [ ] 5.2 Ledger double-entry helper
-- [ ] 5.3 Reward release + 10% service fee
-- [ ] 5.4 Refund flow
-- [ ] 5.5 7-day auto-release
-- [ ] 5.6 Wallet page
-- [ ] 5.7 Clean build + test
+- [x] 5.1 Funding + activation fee
+- [x] 5.2 Ledger double-entry helper
+- [x] 5.3 Reward release + 10% service fee
+- [x] 5.4 Refund flow
+- [x] 5.5 Auto-release (immediate on completion + 7-day fallback)
+- [x] 5.6 Wallet page
+- [x] 5.7 Clean build + test
 
 ---
 
@@ -74,10 +74,62 @@
 - Seeker pays a **10% posting deposit** (of the reward) at post time, auto-deducted from their wallet. Cancelling **before a Linker is selected** refunds the deposit **less the RM10 non-refundable listing fee**; once a Linker is selected the deposit is consumed.
 - A Seeker **cannot post** unless their wallet holds sufficient credit for the 10% deposit. Seekers may post **unlimited** Opportunities while credit allows.
 - The **reward is not charged at posting**. The Seeker must have **full settlement of the reward** available when they **accept a Linker's submission**; the reward is then deducted and held in escrow.
-- Reward held in escrow until verified completion.
+- Reward held in escrow until verified completion, then **released immediately** when the Seeker marks the connection complete (the 7-day window is a fallback safety net only — see §5.7 Escrow Release Model in the blueprint).
 - Linker pays **10% service fee** on payout.
 - Failed opportunity → **reward** returned to Seeker; the **posting deposit** is refunded only for a pre-selection cancellation (less the listing fee).
 - Currency conversion must never overwrite original transaction value (future).
+
+---
+
+## Update — 2026-10-15 · Escrow release is immediate on completion (Option A)
+
+**Problem.** Completing a connection and releasing the reward were two separate
+actions on two different pages ("Mark complete" on the connection page;
+"Release reward" on the opportunity page). After marking complete, the Seeker's
+wallet still showed the reward as *Pending escrow* and the Linker saw no payout —
+the money only moved if the Seeker found and pressed the second button. The
+blueprint's §5.16 / §5.17 flows describe a **single** "Payment Release" step, so
+the two-step UI was a bug, not a design.
+
+**Decision (Option A).** The reward is released **immediately** when the Seeker
+marks the connection complete. The 7-day window is now a **fallback only** — a
+safety net that pays out a completed connection that was somehow never released,
+and a window in which a dispute can freeze the escrow. It is **never** the
+payment date. This is now defined authoritatively in the blueprint at
+**§5.7 — Escrow Release Model**.
+
+**Code changes:**
+
+- **New `src/lib/release.ts`** — `settleRewardRelease()`, the single money-movement
+  path (escrow → Linker reward, Linker → platform 10% fee, COMPLETED payout
+  record). Extracted out of the `"use server"` action file so it can be called
+  from any server action without being exposed as its own endpoint. Shared by
+  the completion action, the legacy manual release action, and the sweep.
+- **`markConnectionCompleteAction`** (`src/app/actions/completions.ts`) now
+  calls `settleRewardRelease()` and sets `release_status = "RELEASED"` in the
+  same action. Idempotent — it skips a connection already
+  `RELEASED`/`REFUNDED`/`VOID`/`HELD`. If the release call fails, the connection
+  is still completed with `release_status = "PENDING_RELEASE"` so the 7-day
+  fallback sweep recovers it, and the error is logged loudly. The Linker is
+  notified with the released amount (or the fallback date, if the release failed).
+- **`runAutoReleaseCheck`** (`src/app/actions/transactions.ts`) is now documented
+  and treated as the **fallback** sweep; it still drains any `PENDING_RELEASE`
+  rows (including legacy rows from the pre-Option-A flow).
+
+**UI changes:**
+
+- Connection page: the completion button now reads **"Mark complete & release
+  reward"** (was "…schedule release (7 days)"), with a hint that completion
+  releases the reward. The Reward & payout card frames `auto_release_at` as a
+  fallback date, not the payment date.
+- Opportunity page: the manual "Release reward" card is now a **recovery action**
+  only — it renders only when the connection is completed **and not yet settled**
+  (hidden once `release_status` is RELEASED/REFUNDED/VOID/HELD).
+- Wallet + public pages (`/fees`, `/how-it-works`): copy updated to say the
+  reward releases **on completion**, with the 7-day window described as a safety
+  net.
+
+No schema change. `npm run build` / tsc + 67 vitest tests pass.
 
 ---
 
@@ -95,11 +147,12 @@ out**.
   **net take-home** (`computeFunding(reward).linkerPayout` = reward − 10%
   `LINKER_SERVICE_FEE_RATE`), and a **state-driven release line**:
   - **paid** (`release_status = RELEASED`) → net + released date;
-  - **scheduled** → `connection.auto_release_at` (set at completion =
-    `completedAt + FEES.RELEASE_WAIT_DAYS`);
+  - **fallback** → `connection.auto_release_at` (set at completion =
+    `completedAt + FEES.RELEASE_WAIT_DAYS`) — the date the fallback sweep would
+    pay, NOT the normal payment date (release is immediate on completion);
   - **held** (dispute, `HELD` / connection `DISPUTED`);
   - **refunded / void** (`REFUNDED` / `VOID`, or connection `FAILED`);
-  - else → "releases N days after the work is completed and verified".
+  - else → "releases on completion, with a fallback safety net".
 - **Wallet — Incoming payouts tile**: sums the net `linkerPayout` of the member's
   connections not yet released/refunded/held/failed and shows the **next release
   date**. (Derived from `connections`, because a `payouts` row is only created

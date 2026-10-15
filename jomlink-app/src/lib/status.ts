@@ -18,18 +18,26 @@ export const PROPOSAL_STATUS_LABEL: Record<string, string> = {
 export const CONNECTION_STATUS_LABEL: Record<string, string> = {
   PENDING_ACKNOWLEDGEMENT: "Pending acknowledgement",
   IN_PROGRESS: "In progress",
+  EVIDENCE_SUBMITTED: "Evidence submitted",
+  AWAITING_SEEKER_CONFIRMATION: "Awaiting your confirmation",
   AWAITING_VERIFICATION: "Awaiting verification",
+  VERIFIED: "Verified",
   COMPLETED: "Completed",
   FAILED: "Failed",
   DISPUTED: "Disputed",
 };
 
 export function statusVariant(status: string) {
-  if (status === "COMPLETED" || status === "SELECTED" || status === "ACTIVE")
+  if (status === "COMPLETED" || status === "SELECTED" || status === "ACTIVE" || status === "VERIFIED")
     return "success";
   if (status === "DISPUTED" || status === "FAILED" || status === "REJECTED")
     return "destructive";
-  if (status === "PENDING_PAYMENT" || status === "AWAITING_VERIFICATION")
+  if (
+    status === "PENDING_PAYMENT" ||
+    status === "AWAITING_VERIFICATION" ||
+    status === "AWAITING_SEEKER_CONFIRMATION" ||
+    status === "EVIDENCE_SUBMITTED"
+  )
     return "warning";
   return "secondary";
 }
@@ -119,6 +127,66 @@ export const CONNECTION_CLOSED_STATUSES = [
 export function isConnectionOpen(status: string | null | undefined): boolean {
   if (!status) return false;
   return !(CONNECTION_CLOSED_STATUSES as readonly string[]).includes(status);
+}
+
+/* ── Verification-gated completion workflow (Phase 14) ─────────────────────
+ *
+ * The Seeker CONFIRMS evidence; the platform VERIFIES it; only the platform
+ * RELEASES escrow. These predicates are the single source of truth for "may
+ * this transition happen?" on the money path.
+ *
+ * Unlike the deny-list predicates above, these are ALLOW-LISTS: an unknown or
+ * unexpected status must fail CLOSED (return false), never open. A predicate
+ * that defaults true on a money move is how the old loophole started.
+ */
+
+/** Statuses in which the Seeker may confirm or reject submitted evidence. */
+export const SEEKER_CONFIRMABLE_STATUSES = [
+  "AWAITING_SEEKER_CONFIRMATION",
+] as const;
+
+/** Statuses in which the platform may verify evidence. */
+export const VERIFIABLE_STATUSES = ["AWAITING_VERIFICATION"] as const;
+
+/** Statuses in which escrow may actually be released (post-verification). */
+export const RELEASABLE_STATUSES = ["VERIFIED"] as const;
+
+/** Statuses that mean the completion workflow is underway (not yet settled). */
+export const COMPLETION_WORKFLOW_STATUSES = [
+  "EVIDENCE_SUBMITTED",
+  "AWAITING_SEEKER_CONFIRMATION",
+  "AWAITING_VERIFICATION",
+  "VERIFIED",
+] as const;
+
+/** May the Seeker confirm or reject the evidence on this connection? */
+export function isSeekerConfirmable(status: string | null | undefined): boolean {
+  if (!status) return false;
+  return (SEEKER_CONFIRMABLE_STATUSES as readonly string[]).includes(status);
+}
+
+/** May the platform verify the evidence on this connection? */
+export function isVerifiable(status: string | null | undefined): boolean {
+  if (!status) return false;
+  return (VERIFIABLE_STATUSES as readonly string[]).includes(status);
+}
+
+/** May escrow be released on this connection? (VERIFIED only.) */
+export function isReleasable(status: string | null | undefined): boolean {
+  if (!status) return false;
+  return (RELEASABLE_STATUSES as readonly string[]).includes(status);
+}
+
+/**
+ * Is the completion workflow underway? Used by the UI to render the
+ * confirm/verify state and by guards that must not offer work actions once
+ * evidence is on the record.
+ */
+export function isInCompletionWorkflow(
+  status: string | null | undefined
+): boolean {
+  if (!status) return false;
+  return (COMPLETION_WORKFLOW_STATUSES as readonly string[]).includes(status);
 }
 
 /* ── Opportunity state machine ─────────────────────────────────────────────

@@ -41,7 +41,6 @@ import type {
   OpportunityRow,
   ConnectionRow,
   LinkerProposalRow,
-  TransactionRow,
 } from "@/lib/jomlink-types";
 
 export const metadata = {
@@ -112,9 +111,34 @@ export default async function DashboardPage() {
     (sum: number, p: { net_amount: number | null }) => sum + Number(p.net_amount || 0),
     0
   );
-  const escrowHeld = transactions
-    .filter((t: TransactionRow) => t.type === "OPPORTUNITY_FUNDING" && t.status === "COMPLETED")
-    .reduce((sum: number, t: TransactionRow) => sum + Number(t.amount || 0), 0);
+  // Escrow still held on the Seekers' funded connections. Derived from each
+  // connection's `release_status` (the same source of truth the wallet and the
+  // Linker side use) rather than the all-time OPPORTUNITY_FUNDING rows — those
+  // are written once at funding time and never updated on release, so summing
+  // them left this tile showing escrow that had already been paid out.
+  const escrowHeld = (
+    seekerConnections as {
+      status?: string | null;
+      release_status?: string | null;
+      agreed_reward?: number | null;
+      opportunities?: { offer_amount?: number | null } | null;
+    }[]
+  )
+    .filter((c) => {
+      const rs = (c.release_status ?? "").toUpperCase();
+      return (
+        c.status !== "DISPUTED" &&
+        c.status !== "FAILED" &&
+        rs !== "RELEASED" &&
+        rs !== "REFUNDED" &&
+        rs !== "VOID" &&
+        rs !== "HELD"
+      );
+    })
+    .reduce((sum, c) => {
+      const reward = Number(c.agreed_reward ?? c.opportunities?.offer_amount ?? 0);
+      return sum + reward;
+    }, 0);
 
   return (
     <div className="space-y-6">

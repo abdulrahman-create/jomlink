@@ -8,9 +8,11 @@ import {
   getConnectionById,
   getOpportunityById,
   createEvidence,
+  updateConnection,
 } from "@/lib/queries";
 import { notifyUser } from "@/lib/notify";
 import { isConnectionOpen } from "@/lib/status";
+import { COMPLETION } from "@/lib/constants";
 
 // ── Storage ─────────────────────────────────────────────────
 // Private bucket; objects are addressed by path only (never a public URL) and
@@ -130,14 +132,28 @@ export async function submitEvidenceAction(
       approved: null,
     });
 
-    // The Seeker reviews evidence before releasing escrow — they must know it landed.
+    // Advance the completion workflow (Phase 14, §5.7): evidence on the record
+    // moves the connection to EVIDENCE_SUBMITTED, then the Seeker is asked to
+    // confirm. A submitted fact is timestamped — it is the immutability anchor
+    // for the platform's verification window. Money does NOT move here.
+    const submittedAt = new Date().toISOString();
+    await updateConnection(conn.id, {
+      status: "EVIDENCE_SUBMITTED",
+      evidence_submitted_at: submittedAt,
+      seeker_confirmation_status: "PENDING",
+    });
+
+    // The Seeker reviews evidence before releasing escrow — they must know it
+    // landed. They must also know the clock is now running: if they do nothing,
+    // the window elapses and verification proceeds without them.
     const opp = await getOpportunityById(conn.opportunity_id);
     await notifyUser(opp?.seeker_id, conn.id, {
       type: "EVIDENCE_SUBMITTED",
       title: "The Linker submitted evidence",
-      body:
-        parsed.data.description?.slice(0, 140) ||
-        `New ${parsed.data.type.replace(/_/g, " ").toLowerCase()} evidence is on the record.`,
+      body: `${
+        parsed.data.description?.slice(0, 120) ||
+        `New ${parsed.data.type.replace(/_/g, " ").toLowerCase()} evidence is on the record.`
+      } Confirm within ${COMPLETION.SEEKER_CONFIRM_WINDOW_DAYS} days or it advances to platform verification automatically.`,
       data: { connectionId: conn.id, hasAttachment: !!accessKey },
     });
 

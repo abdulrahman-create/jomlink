@@ -20,6 +20,7 @@ Phased build plan for the Jomlink business-introductions marketplace.
 | `phase-11-match-score-and-data-layer.md` | Match score rewrite, relationship save fix, `jomlink` schema routing |
 | `phase-12-lifecycle-guards-and-money-path.md` | Centralised lifecycle state machine, notification deep-links, Linker negotiation UI, escrow/affordability fixes |
 | `phase-13-appointments-and-deadline-warnings.md` | Appointment notifications + track records, rejection recovery, connection-list link, running-out-of-time deadline warnings |
+| `phase-14-verification-gated-release.md` | **Built** — verification-gated escrow release: Seeker confirms, platform verifies, only the platform releases (⚠️ migration not applied) |
 
 ## How to use
 

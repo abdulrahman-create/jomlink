@@ -26,7 +26,7 @@ import {
 } from "@/app/actions/appointments";
 import { submitEvidenceAction, type EvidenceState } from "@/app/actions/evidence";
 import {
-  markConnectionCompleteAction,
+  confirmEvidenceAction,
   requestExtensionAction,
   acceptExtensionAction,
   rejectExtensionAction,
@@ -209,40 +209,163 @@ export function SubmitEvidence({ connectionId }: { connectionId: string }) {
 export function CompleteConnection({
   connectionId,
   status,
+  role,
+  riskLevel,
 }: {
   connectionId: string;
   status: string;
+  role: "seeker" | "linker";
+  riskLevel?: string | null;
 }) {
   const router = useRouter();
   const [state, action, pending] = useActionState<CompletionState, FormData>(
-    markConnectionCompleteAction,
+    confirmEvidenceAction,
     {}
   );
+  const [rejecting, setRejecting] = React.useState(false);
   useEffect(() => {
     if (state?.success) router.refresh();
   }, [state, router]);
 
-  if (status === "COMPLETED") {
-    return <p className="text-sm text-muted-foreground">This connection is complete.</p>;
+  // ── Linker view: read-only status of the completion workflow. ────────────
+  if (role === "linker") {
+    if (status === "AWAITING_SEEKER_CONFIRMATION") {
+      return (
+        <p className="text-sm text-muted-foreground">
+          Evidence submitted — awaiting the Seeker&apos;s confirmation. If they do
+          not respond in time, it advances to platform verification automatically.
+        </p>
+      );
+    }
+    if (status === "AWAITING_VERIFICATION") {
+      return (
+        <p className="text-sm text-muted-foreground">
+          The Seeker confirmed. Your reward is now awaiting platform verification
+          before release.
+        </p>
+      );
+    }
+    if (status === "VERIFIED") {
+      return (
+        <p className="text-sm text-muted-foreground">
+          {riskLevel === "HIGH"
+            ? "Verified — held for a routine manual review before your reward is released."
+            : "Verified — your reward has been released."}
+        </p>
+      );
+    }
+    if (status === "COMPLETED") {
+      return <p className="text-sm text-muted-foreground">This connection is complete.</p>;
+    }
+    return null;
+  }
+
+  // ── Seeker view. ─────────────────────────────────────────────────────────
+  if (status === "COMPLETED" || status === "VERIFIED") {
+    return (
+      <p className="text-sm text-muted-foreground">
+        {status === "VERIFIED"
+          ? riskLevel === "HIGH"
+            ? "Verified — the reward is held for a routine manual review."
+            : "Verified — the reward has been released to the Linker."
+          : "This connection is complete."}
+      </p>
+    );
+  }
+
+  if (status === "AWAITING_VERIFICATION") {
+    return (
+      <p className="text-sm text-muted-foreground">
+        You confirmed the evidence. Reward release now awaits platform
+        verification.
+      </p>
+    );
+  }
+
+  // Before evidence lands there is nothing to confirm — the Linker must submit.
+  if (status !== "AWAITING_SEEKER_CONFIRMATION") {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Waiting for the Linker to submit evidence. Once it arrives you can confirm
+        it (which starts platform verification) or reject it (which opens a
+        dispute).
+      </p>
+    );
   }
 
   return (
-    <form action={action} className="space-y-3">
-      <input type="hidden" name="connectionId" value={connectionId} />
+    <div className="space-y-3">
       {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
-      <div className="space-y-1">
-        <Label htmlFor="completionNotes">Completion notes</Label>
-        <Textarea id="completionNotes" name="completionNotes" rows={2} />
-      </div>
-      <Button type="submit" size="sm" disabled={pending}>
-        {pending ? (
-          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-        ) : (
-          <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-        )}
-        Mark complete &amp; schedule release (7 days)
-      </Button>
-    </form>
+
+      {!rejecting ? (
+        <form action={action} className="space-y-3">
+          <input type="hidden" name="connectionId" value={connectionId} />
+          <input type="hidden" name="decision" value="CONFIRM" />
+          <p className="text-xs text-muted-foreground">
+            Confirming does <strong>not</strong> pay the Linker directly. It passes
+            the completion to Jomlink for verification, and only then is the escrow
+            released.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" size="sm" disabled={pending}>
+              {pending ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+              )}
+              Confirm evidence
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setRejecting(true)}
+              disabled={pending}
+            >
+              Reject evidence
+            </Button>
+          </div>
+        </form>
+      ) : (
+        <form action={action} className="space-y-3">
+          <input type="hidden" name="connectionId" value={connectionId} />
+          <input type="hidden" name="decision" value="REJECT" />
+          <div className="space-y-1">
+            <Label htmlFor="reason">Reason for rejection</Label>
+            <Textarea
+              id="reason"
+              name="reason"
+              rows={2}
+              required
+              placeholder="Explain why the evidence does not show a completed introduction."
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Rejecting opens a dispute and freezes the escrow. It is not a refund —
+            Jomlink will adjudicate.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" size="sm" variant="destructive" disabled={pending}>
+              {pending ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <X className="h-4 w-4" aria-hidden="true" />
+              )}
+              Reject &amp; open dispute
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setRejecting(false)}
+              disabled={pending}
+            >
+              Cancel
+            </Button>
+          </div>
+        </form>
+      )}
+    </div>
   );
 }
 

@@ -40,7 +40,10 @@ export const metadata = { title: "Connection · Jomlink" };
 const CONN_STATUS_LABEL: Record<string, string> = {
   PENDING_ACKNOWLEDGEMENT: "Pending acknowledgement",
   IN_PROGRESS: "In progress",
+  EVIDENCE_SUBMITTED: "Evidence submitted",
+  AWAITING_SEEKER_CONFIRMATION: "Awaiting your confirmation",
   AWAITING_VERIFICATION: "Awaiting verification",
+  VERIFIED: "Verified",
   COMPLETED: "Completed",
   FAILED: "Failed",
   DISPUTED: "Disputed",
@@ -113,10 +116,12 @@ export default async function ConnectionDetailPage({
   // ── Reward & payout (what the Linker receives, and when) ────────────────────
   // The reward is settled from the Seeker's wallet into escrow when a Linker is
   // selected (`agreed_reward`, falling back to the opportunity's advertised
-  // reward). The Linker is paid this reward less the platform service fee; a
-  // 7-day release window runs from completion before it auto-releases. This card
-  // makes both figures concrete so the Linker always knows their take-home and
-  // the date it lands in their wallet — not just that "escrow" exists.
+  // reward). The Linker is paid this reward less the platform service fee, and
+  // the release happens IMMEDIATELY when the Seeker marks the connection
+  // complete (Option A). The 7-day window (`auto_release_at`) is only a fallback
+  // safety net for a completed-but-unreleased connection. This card makes both
+  // figures concrete so the Linker always knows their take-home and the date a
+  // fallback payout would land — not just that "escrow" exists.
   const rewardAmount = Number(conn.agreed_reward ?? opp.offer_amount ?? 0);
   const funding = computeFunding(rewardAmount);
   const serviceFeeRatePct = Math.round(FEES.LINKER_SERVICE_FEE_RATE * 100);
@@ -127,13 +132,12 @@ export default async function ConnectionDetailPage({
   //   HELD / DISPUTED     → frozen by an open dispute.
   //   FAILED / VOID       → the job failed; the reward is refunded, not paid.
   //   else                → still held; `auto_release_at` (set at completion)
-  //                         is the date it is scheduled to land.
+  //                         is the FALLBACK date the safety-net sweep would pay.
   const releaseStatus = (conn.release_status ?? "").toUpperCase();
   const released = releaseStatus === "RELEASED";
   const refunded = releaseStatus === "REFUNDED" || releaseStatus === "VOID";
   const disputed = conn.status === "DISPUTED" || releaseStatus === "HELD";
   const failed = conn.status === "FAILED";
-  const scheduled = !released && !refunded && !disputed && !failed;
   const releaseDate = conn.auto_release_at ? formatDate(conn.auto_release_at) : null;
 
   return (
@@ -231,23 +235,25 @@ export default async function ConnectionDetailPage({
               ) : releaseDate ? (
                 <>
                   <p className="font-semibold text-foreground">
-                    Scheduled release: {releaseDate}
+                    Awaiting release
                   </p>
                   <p className="mt-0.5 text-muted-foreground">
-                    The {formatMYR(funding.linkerPayout)} will be released to the
-                    Linker&apos;s wallet on this date, once the work is verified
-                    complete.
+                    The {formatMYR(funding.linkerPayout)} releases to the
+                    Linker&apos;s wallet as soon as the Seeker marks the work
+                    complete. If it is not released, a safety net pays it out
+                    automatically on {releaseDate}.
                   </p>
                 </>
               ) : (
                 <>
                   <p className="font-semibold text-foreground">
-                    Release date: set on completion
+                    Released on completion
                   </p>
                   <p className="mt-0.5 text-muted-foreground">
-                    The reward releases to the Linker&apos;s wallet{" "}
-                    {FEES.RELEASE_WAIT_DAYS} days after the work is marked
-                    complete and verified.
+                    The reward releases to the Linker&apos;s wallet as soon as
+                    the Seeker marks the work complete. If it is not released, a{" "}
+                    {FEES.RELEASE_WAIT_DAYS}-day safety net pays it out
+                    automatically.
                   </p>
                 </>
               )}
@@ -589,8 +595,10 @@ export default async function ConnectionDetailPage({
         </CardContent>
       </Card>
 
-      {/* Completion */}
-      {isSeeker && (
+      {/* Completion (Phase 14, §5.7). The Seeker confirms/rejects the evidence;
+          the platform verifies and releases. Both roles see the workflow state,
+          but only the Seeker gets the confirm/reject controls. */}
+      {(isSeeker || isLinker) && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
@@ -598,12 +606,23 @@ export default async function ConnectionDetailPage({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <CompleteConnection connectionId={conn.id} status={conn.status} />
-            <div className="mt-3 flex flex-wrap gap-2">
-              {["PENDING_ACKNOWLEDGEMENT", "IN_PROGRESS", "AWAITING_VERIFICATION"].includes(
-                conn.status
-              ) && <MarkFailed connectionId={conn.id} />}
-            </div>
+            <CompleteConnection
+              connectionId={conn.id}
+              status={conn.status}
+              role={isSeeker ? "seeker" : "linker"}
+              riskLevel={conn.risk_level}
+            />
+            {isSeeker && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {[
+                  "PENDING_ACKNOWLEDGEMENT",
+                  "IN_PROGRESS",
+                  "EVIDENCE_SUBMITTED",
+                  "AWAITING_SEEKER_CONFIRMATION",
+                  "AWAITING_VERIFICATION",
+                ].includes(conn.status) && <MarkFailed connectionId={conn.id} />}
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

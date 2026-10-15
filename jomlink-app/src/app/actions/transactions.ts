@@ -5,17 +5,23 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import {
   getOpportunityById,
-  getTransactionsByOpportunity,
   createTransaction,
   createLedgerEntry,
-  createPayout,
   createRefund,
-  updateTransactionStatus,
   updateOpportunityIfOwned,
+  listReleasesDue,
+  listAwaitingSeekerConfirmation,
+  listAwaitingVerification,
+  listVerifiedHeld,
+  updateConnection,
+  getConnectionById,
 } from "@/lib/queries";
 import { computeFunding, roundMoney, postingDepositRefund } from "@/lib/funding";
 import { doubleEntry, accounts } from "@/lib/ledger";
-import { FEES, WALLET } from "@/lib/constants";
+import { settleRewardRelease } from "@/lib/release";
+import { completeAndRelease, verifyCompletionCore } from "@/lib/completion";
+import { notify } from "@/lib/notify";
+import { FEES, WALLET, COMPLETION } from "@/lib/constants";
 import { createBill } from "@/lib/toyyibpay";
 import { isOpportunitySelectable } from "@/lib/status";
 
@@ -50,49 +56,13 @@ export async function releaseRewardAction(
   const funding = computeFunding(Number(opp.offer_amount) || 0);
 
   try {
-    // 1) Reward release transaction (REWARD_RELEASE).
-    const releaseTx = await createTransaction({
-      user_id: linkerId,
-      opportunity_id: opp.id,
-      type: "REWARD_RELEASE",
-      status: "COMPLETED",
-      amount: funding.reward,
-      currency: "MYR",
-      description: `Reward release for "${opp.title}"`,
-      reference: `OPP-REL-${opp.id.slice(0, 8)}-${Date.now()}`,
-    });
-    // Escrow → Linker (full reward).
-    for (const e of doubleEntry(accounts.escrow(opp.id), accounts.linker(linkerId), funding.reward)) {
-      await createLedgerEntry({ transaction_id: releaseTx.id, ...e });
-    }
-
-    // 2) Linker service fee (10%) → platform.
-
-    const feeTx = await createTransaction({
-      user_id: linkerId,
-      opportunity_id: opp.id,
-      type: "LINKER_SERVICE_FEE",
-      status: "COMPLETED",
-      amount: funding.linkerServiceFee,
-      fee_raw: funding.linkerServiceFee,
-      currency: "MYR",
-      description: `Linker service fee (10%) for "${opp.title}"`,
-      reference: `OPP-FEE-${opp.id.slice(0, 8)}-${Date.now()}`,
-    });
-for (const e of doubleEntry(accounts.linker(linkerId), accounts.platformService, funding.linkerServiceFee)) {
-      await createLedgerEntry({ transaction_id: feeTx.id, ...e });
-    }
-
-    // 3) Payout record for the Linker (net = reward − 10%).
-    await createPayout({
-      transaction_id: releaseTx.id,
-      recipient_id: linkerId,
-      amount: funding.reward,
-      service_fee: funding.linkerServiceFee,
-      net_amount: funding.linkerPayout,
-      method: "BANK_TRANSFER",
-      status: "COMPLETED",
-      released_at: new Date().toISOString(),
+    await settleRewardRelease({
+      opportunityId: opp.id,
+      opportunityTitle: opp.title,
+      linkerId,
+      reward: funding.reward,
+      linkerServiceFee: funding.linkerServiceFee,
+      linkerPayout: funding.linkerPayout,
     });
 
     revalidatePath("/opportunities/" + opp.id);
@@ -291,23 +261,232 @@ export async function cancelOpportunityAction(
 }
 
 /**
- * 7-day auto-release: mark escrowed rewards as releasable once the
- * completion date + RELEASE_WAIT_DAYS has passed and no dispute exists.
- * This is a cron-ready helper — call it from a scheduled job (or on-demand).
+ * 7-day auto-release FALLBACK sweep (§3.9).
+ *
+ * Since Option A (2026-10-15), the primary release happens immediately when the
+ * Seeker marks a connection complete (`markConnectionCompleteAction`). This
+ * sweep is the SAFETY NET: it releases any connection that is COMPLETED with
+ * `release_status = PENDING_RELEASE` whose `auto_release_at` (completion + 7
+ * days) has passed and which no dispute has frozen — i.e. the Seeker never
+ * released it. Driven by `GET /api/connections/release-sweep` (cron) or on demand.
+ *
+ * It also drains any legacy rows left in PENDING_RELEASE by the pre-Option-A
+ * two-step flow.
+ *
+ * For each due connection it:
+ *   1. re-reads the connection so a dispute/refund raised between the list
+ *      query and the release is not overwritten,
+ *   2. moves the money through the shared `settleRewardRelease` core,
+ *   3. flips `release_status` → RELEASED so BOTH dashboards (Seeker escrow tile
+ *      and Linker incoming payouts) agree the money has left escrow,
+ *   4. notifies the Linker their reward has landed.
+ *
+ * Idempotent: a connection already RELEASED/REFUNDED/VOID/HELD is skipped, so
+ * overlapping cron runs cannot double-pay.
  */
-export async function runAutoReleaseCheck(): Promise<{ released: number }> {
-  // NOTE: In this phase we expose the rule + a manual trigger. A real cron
-  // would iterate COMPLETED opportunities whose auto_release_at <= now().
+export async function runAutoReleaseCheck(): Promise<{ released: number; skipped: number }> {
+  const due = await listReleasesDue();
+  let released = 0;
+  let skipped = 0;
 
-  // The rule is enforced in releaseRewardAction by requiring status COMPLETED
-  // and the 7-day window is surfaced via FEES.RELEASE_WAIT_DAYS.
+  for (const listed of due) {
+    try {
+      // Re-read to get the authoritative release_status/status at the moment of
+      // release — the list query is a snapshot and a dispute may have landed.
+      const conn = await getConnectionById(listed.id);
+      if (!conn) {
+        skipped++;
+        continue;
+      }
+      const rs = (conn.release_status ?? "").toUpperCase();
+      if (
+        conn.status !== "COMPLETED" ||
+        rs === "RELEASED" ||
+        rs === "REFUNDED" ||
+        rs === "VOID" ||
+        rs === "HELD"
+      ) {
+        skipped++;
+        continue;
+      }
 
-  return { released: 0 };
+      const opp = await getOpportunityById(conn.opportunity_id);
+      if (!opp) {
+        skipped++;
+        continue;
+      }
+
+      const reward = Number(conn.agreed_reward ?? opp.offer_amount ?? 0);
+      const funding = computeFunding(reward);
+      if (funding.reward <= 0) {
+        skipped++;
+        continue;
+      }
+
+      await settleRewardRelease({
+        opportunityId: opp.id,
+        opportunityTitle: opp.title,
+        linkerId: conn.linker_id,
+        reward: funding.reward,
+        linkerServiceFee: funding.linkerServiceFee,
+        linkerPayout: funding.linkerPayout,
+      });
+
+      await updateConnection(conn.id, { release_status: "RELEASED" });
+
+      await notify({
+        userId: conn.linker_id,
+        type: "REWARD_RELEASED",
+        title: "Your reward has been released",
+        body: `The release window on "${opp.title}" has ended. Your reward is now in your wallet.`,
+        data: { connectionId: conn.id, opportunityId: opp.id },
+      });
+
+      released++;
+    } catch (e: unknown) {
+      console.error("runAutoReleaseCheck: release failed for", listed.id, e);
+      skipped++;
+    }
+  }
+
+  if (released > 0) {
+    revalidatePath("/dashboard/wallet");
+    revalidatePath("/dashboard");
+  }
+
+  return { released, skipped };
 }
 
 /** The 7-day wait window (days), from constants. */
 export async function releaseWaitDays(): Promise<number> {
   return FEES.RELEASE_WAIT_DAYS;
+}
+
+/**
+ * Verification-gated completion sweep (Phase 14, §5.7).
+ *
+ * Three timeouts, each protecting one party from being held hostage:
+ *   1. AUTO-ADVANCE — a connection in `AWAITING_SEEKER_CONFIRMATION` whose
+ *      `evidence_submitted_at + SEEKER_CONFIRM_WINDOW_DAYS` has passed advances
+ *      to `AWAITING_VERIFICATION`. Silence is non-objection: a ghosting Seeker
+ *      can never block payment.
+ *   2. AUTO-VERIFY — a connection in `AWAITING_VERIFICATION` whose
+ *      `seeker_confirmed_at + VERIFICATION_WINDOW_DAYS` has passed is verified
+ *      (and released, unless HIGH risk → held). The platform can never stall.
+ *   3. AUTO-RELEASE — a `VERIFIED` connection whose `release_hold_until` has
+ *      passed completes + releases.
+ *
+ * Distinct from `runAutoReleaseCheck`, which is the legacy 7-day fallback for a
+ * COMPLETED-but-unreleased connection. Together they drain the whole money path.
+ *
+ * Idempotent: each stage skips rows that are no longer in the expected status,
+ * and the release core skips any connection already RELEASED/REFUNDED/VOID.
+ */
+export async function runVerificationSweep(): Promise<{
+  advanced: number;
+  verified: number;
+  released: number;
+  held: number;
+  skipped: number;
+}> {
+  const now = new Date();
+  let advanced = 0;
+  let verified = 0;
+  let released = 0;
+  let held = 0;
+  let skipped = 0;
+
+  // ── 1. Auto-advance seeker-confirmation timeouts ────────────────────────
+  const confirmDeadlineMs =
+    COMPLETION.SEEKER_CONFIRM_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  const pendingConfirm = await listAwaitingSeekerConfirmation(now);
+  for (const listed of pendingConfirm) {
+    try {
+      const conn = await getConnectionById(listed.id);
+      if (!conn || conn.status !== "AWAITING_SEEKER_CONFIRMATION") {
+        skipped++;
+        continue;
+      }
+      const submitted = conn.evidence_submitted_at
+        ? new Date(conn.evidence_submitted_at).getTime()
+        : 0;
+      if (now.getTime() - submitted < confirmDeadlineMs) {
+        skipped++;
+        continue;
+      }
+      await updateConnection(conn.id, {
+        status: "AWAITING_VERIFICATION",
+        seeker_confirmation_status: "TIMED_OUT",
+        seeker_confirmed_at: now.toISOString(),
+        verification_status: "PENDING",
+      });
+      advanced++;
+    } catch (e: unknown) {
+      console.error("runVerificationSweep: advance failed for", listed.id, e);
+      skipped++;
+    }
+  }
+
+  // ── 2. Auto-verify verification timeouts ────────────────────────────────
+  const verifyDeadlineMs =
+    COMPLETION.VERIFICATION_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  const pendingVerify = await listAwaitingVerification(now);
+  for (const listed of pendingVerify) {
+    try {
+      const conn = await getConnectionById(listed.id);
+      if (!conn || conn.status !== "AWAITING_VERIFICATION") {
+        skipped++;
+        continue;
+      }
+      const confirmed = conn.seeker_confirmed_at
+        ? new Date(conn.seeker_confirmed_at).getTime()
+        : 0;
+      if (now.getTime() - confirmed < verifyDeadlineMs) {
+        skipped++;
+        continue;
+      }
+      const result = await verifyCompletionCore(conn.id);
+      if (!result.ok) {
+        skipped++;
+        continue;
+      }
+      if (result.held) held++;
+      else verified++;
+      if (result.released) released++;
+    } catch (e: unknown) {
+      console.error("runVerificationSweep: verify failed for", listed.id, e);
+      skipped++;
+    }
+  }
+
+  // ── 3. Auto-release verified connections whose mandatory hold elapsed ────
+  const heldDue = await listVerifiedHeld(now);
+  for (const listed of heldDue) {
+    try {
+      const conn = await getConnectionById(listed.id);
+      if (!conn || conn.status !== "VERIFIED") {
+        skipped++;
+        continue;
+      }
+      const result = await completeAndRelease(conn);
+      if (!result.ok) {
+        skipped++;
+        continue;
+      }
+      if (result.released) released++;
+      else skipped++;
+    } catch (e: unknown) {
+      console.error("runVerificationSweep: release failed for", listed.id, e);
+      skipped++;
+    }
+  }
+
+  if (released > 0 || advanced > 0 || verified > 0) {
+    revalidatePath("/dashboard/wallet");
+    revalidatePath("/dashboard");
+  }
+
+  return { advanced, verified, released, held, skipped };
 }
 
 // ── Wallet top-up (ToyyibPay) ────────────────────────────────

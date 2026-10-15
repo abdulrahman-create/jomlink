@@ -213,6 +213,16 @@ export interface ConnectionRow {
   completed_at: string | null;
   auto_release_at: string | null;
   release_status: string | null;
+  // ── Verification-gated completion workflow (Phase 14) ──
+  evidence_submitted_at: string | null;
+  seeker_confirmed_at: string | null;
+  seeker_confirmation_status: string | null; // CONFIRMED | REJECTED | TIMED_OUT
+  verification_status: string | null; // PENDING | PASSED | FAILED | MANUAL_REVIEW
+  verified_at: string | null;
+  verification_notes: string | null;
+  risk_score: number | null;
+  risk_level: string | null; // LOW | MEDIUM | HIGH
+  release_hold_until: string | null;
   created_at: string;
   updated_at: string;
 }

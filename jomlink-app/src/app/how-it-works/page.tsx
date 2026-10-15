@@ -26,7 +26,7 @@ const STEPS = [
   },
   {
     title: "5. Completion and payment",
-    body: "Once the connection is confirmed complete, the reward is released to the Linker after a 7-day hold. Jomlink deducts a 10% service fee from the payout.",
+    body: "When the Seeker marks the connection complete, the reward is released to the Linker immediately. Jomlink deducts a 10% service fee from the payout.",
   },
 ];
 

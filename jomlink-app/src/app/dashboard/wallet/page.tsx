@@ -7,6 +7,7 @@ import {
   getPayoutsByRecipient,
   getRefundsByRecipient,
   getConnectionsByUser,
+  getConnectionsForSeeker,
   getUserById,
 } from "@/lib/queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -67,11 +68,12 @@ export default async function WalletPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [transactions, payouts, refunds, myConnections, userRow] = await Promise.all([
+  const [transactions, payouts, refunds, myConnections, seekerConnections, userRow] = await Promise.all([
     getTransactionsByUser(user.id),
     getPayoutsByRecipient(user.id),
     getRefundsByRecipient(user.id),
     getConnectionsByUser(user.id),
+    getConnectionsForSeeker(user.id),
     getUserById(user.id),
   ]);
 
@@ -116,10 +118,36 @@ export default async function WalletPage() {
     )
     .reduce((sum: number, t: TransactionRow) => sum + Number(t.amount || 0), 0);
 
-  // Pending escrow: rewards funded but not yet released or refunded.
-  const pendingEscrow = settled
-    .filter((t: TransactionRow) => t.type === "OPPORTUNITY_FUNDING")
-    .reduce((sum: number, t: TransactionRow) => sum + Number(t.amount || 0), 0);
+  // Pending escrow (Seeker side): the reward of each funded connection that has
+  // NOT yet left escrow. This is derived from the connection's `release_status`
+  // — the same source of truth the Linker side uses — rather than from the
+  // all-time `OPPORTUNITY_FUNDING` transactions. Those funding rows are written
+  // once, at funding time, and never updated on release, so summing them made
+  // the tile show "pending forever" even after the reward had been released.
+  const heldEscrowConnections = (
+    seekerConnections as {
+      status?: string | null;
+      release_status?: string | null;
+      agreed_reward?: number | null;
+      opportunities?: { offer_amount?: number | null } | null;
+    }[]
+  ).filter((c) => {
+    const rs = (c.release_status ?? "").toUpperCase();
+    // Still held: not yet released, not refunded, not void, and not frozen by a
+    // dispute. A FAILED connection is refunded (VOID) so it is excluded too.
+    return (
+      c.status !== "DISPUTED" &&
+      c.status !== "FAILED" &&
+      rs !== "RELEASED" &&
+      rs !== "REFUNDED" &&
+      rs !== "VOID" &&
+      rs !== "HELD"
+    );
+  });
+  const pendingEscrow = heldEscrowConnections.reduce((sum, c) => {
+    const reward = Number(c.agreed_reward ?? c.opportunities?.offer_amount ?? 0);
+    return sum + computeFunding(reward).reward;
+  }, 0);
   const pendingPayouts = payouts
     .filter((p: PayoutRow) => p.status !== "RELEASED" && p.status !== "COMPLETED")
     .reduce((sum: number, p: PayoutRow) => sum + Number(p.net_amount || 0), 0);

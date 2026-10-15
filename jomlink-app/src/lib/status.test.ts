@@ -3,10 +3,14 @@ import {
   CONNECTION_CLOSED_STATUSES,
   PROPOSAL_TERMINAL_STATUSES,
   isConnectionOpen,
+  isInCompletionWorkflow,
   isOpportunitySelectable,
   isOpportunityTerminal,
   isProposalNegotiable,
   isProposalSelectable,
+  isReleasable,
+  isSeekerConfirmable,
+  isVerifiable,
 } from "@/lib/status";
 
 /**
@@ -186,5 +190,76 @@ describe("isOpportunitySelectable", () => {
     // call site: an unknown opportunity must not block the Select button.
     expect(isOpportunitySelectable(null)).toBe(true);
     expect(isOpportunitySelectable(undefined)).toBe(true);
+  });
+});
+
+
+describe("Phase 14 � verification-gated completion predicates", () => {
+  // These predicates gate the MONEY PATH, so unlike the deny-list predicates
+  // above they are ALLOW-LISTS and must fail CLOSED on an unrecognised status.
+  // An unknown status returning true is exactly the shape of the loophole this
+  // phase closes: the Seeker's click used to BE the payment.
+
+  it("lets only the Seeker confirm, and only in AWAITING_SEEKER_CONFIRMATION", () => {
+    expect(isSeekerConfirmable("AWAITING_SEEKER_CONFIRMATION")).toBe(true);
+    expect(isSeekerConfirmable("EVIDENCE_SUBMITTED")).toBe(false);
+    expect(isSeekerConfirmable("AWAITING_VERIFICATION")).toBe(false);
+    expect(isSeekerConfirmable("COMPLETED")).toBe(false);
+    expect(isSeekerConfirmable("DISPUTED")).toBe(false);
+  });
+
+  it("fails closed on a missing or unknown status for the Seeker gate", () => {
+    expect(isSeekerConfirmable(null)).toBe(false);
+    expect(isSeekerConfirmable(undefined)).toBe(false);
+    expect(isSeekerConfirmable("")).toBe(false);
+    // Allow-list: a future status is NOT confirmable until deliberately added.
+    expect(isSeekerConfirmable("SOME_FUTURE_STATUS")).toBe(false);
+  });
+
+  it("lets only the platform verify, and only in AWAITING_VERIFICATION", () => {
+    expect(isVerifiable("AWAITING_VERIFICATION")).toBe(true);
+    expect(isVerifiable("EVIDENCE_SUBMITTED")).toBe(false);
+    expect(isVerifiable("AWAITING_SEEKER_CONFIRMATION")).toBe(false);
+    expect(isVerifiable("VERIFIED")).toBe(false);
+    expect(isVerifiable("COMPLETED")).toBe(false);
+  });
+
+  it("fails closed on a missing or unknown status for the verify gate", () => {
+    expect(isVerifiable(null)).toBe(false);
+    expect(isVerifiable(undefined)).toBe(false);
+    expect(isVerifiable("SOME_FUTURE_STATUS")).toBe(false);
+  });
+
+  it("releases escrow only from VERIFIED", () => {
+    expect(isReleasable("VERIFIED")).toBe(true);
+    expect(isReleasable("AWAITING_VERIFICATION")).toBe(false);
+    expect(isReleasable("AWAITING_SEEKER_CONFIRMATION")).toBe(false);
+    expect(isReleasable("COMPLETED")).toBe(false);
+    expect(isReleasable(null)).toBe(false);
+  });
+
+  it("recognises the four completion-workflow states", () => {
+    expect(isInCompletionWorkflow("EVIDENCE_SUBMITTED")).toBe(true);
+    expect(isInCompletionWorkflow("AWAITING_SEEKER_CONFIRMATION")).toBe(true);
+    expect(isInCompletionWorkflow("AWAITING_VERIFICATION")).toBe(true);
+    expect(isInCompletionWorkflow("VERIFIED")).toBe(true);
+    expect(isInCompletionWorkflow("IN_PROGRESS")).toBe(false);
+    expect(isInCompletionWorkflow("COMPLETED")).toBe(false);
+    expect(isInCompletionWorkflow(null)).toBe(false);
+  });
+
+  it("keeps the completion-workflow states OUT of the closed set", () => {
+    // Work is not over while evidence is being confirmed/verified, so these must
+    // NOT be closed � otherwise the confirm/verify actions themselves would be
+    // blocked by the connection lifecycle guard.
+    for (const s of [
+      "EVIDENCE_SUBMITTED",
+      "AWAITING_SEEKER_CONFIRMATION",
+      "AWAITING_VERIFICATION",
+      "VERIFIED",
+    ]) {
+      expect(CONNECTION_CLOSED_STATUSES as readonly string[]).not.toContain(s);
+      expect(isConnectionOpen(s)).toBe(true);
+    }
   });
 });

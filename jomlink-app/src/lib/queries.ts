@@ -1299,6 +1299,91 @@ export async function listDeadlinesApproaching(
   return (data as OpportunityDeadlineRow[]) ?? [];
 }
 
+/**
+ * Connections whose 7-day escrow release window has elapsed and are still
+ * awaiting release (§3.9). A connection is due when:
+ *   • its work is COMPLETED (the release timer only starts on completion),
+ *   • `auto_release_at` is set and has passed,
+ *   • no dispute has frozen it — `release_status` is NOT HELD, and the
+ *     connection is NOT DISPUTED,
+ *   • it has not already settled — `release_status` is NOT RELEASED / REFUNDED /
+ *     VOID.
+ *
+ * Ordered oldest-first so a backlog drains in the order it accrued. `auto_release_at`
+ * is nullable, so the `.not(...is, null)` filter keeps rows that actually have a
+ * timer rather than treating a missing date as "due".
+ */
+export async function listReleasesDue(
+  now: Date = new Date()
+): Promise<ConnectionRow[]> {
+  const { data, error } = await sc()
+    .from("connections")
+    .select("*")
+    .eq("status", "COMPLETED")
+    .not("auto_release_at", "is", null)
+    .lte("auto_release_at", now.toISOString())
+    .order("auto_release_at", { ascending: true });
+  if (error) throw error;
+  return (data as ConnectionRow[]) ?? [];
+}
+
+/**
+ * Connections where the Seeker has been asked to confirm evidence and the
+ * window has elapsed (Phase 14, §5.7). Silence is non-objection: the sweep
+ * advances these to AWAITING_VERIFICATION so a silent Seeker can never block
+ * payment.
+ */
+export async function listAwaitingSeekerConfirmation(
+  now: Date = new Date()
+): Promise<ConnectionRow[]> {
+  const { data, error } = await sc()
+    .from("connections")
+    .select("*")
+    .eq("status", "AWAITING_SEEKER_CONFIRMATION")
+    .not("evidence_submitted_at", "is", null)
+    .lte("evidence_submitted_at", now.toISOString())
+    .order("evidence_submitted_at", { ascending: true });
+  if (error) throw error;
+  return (data as ConnectionRow[]) ?? [];
+}
+
+/**
+ * Connections awaiting platform verification (Phase 14, §5.7). The sweep
+ * re-checks the per-row verification window against `seeker_confirmed_at`.
+ */
+export async function listAwaitingVerification(
+  now: Date = new Date()
+): Promise<ConnectionRow[]> {
+  const { data, error } = await sc()
+    .from("connections")
+    .select("*")
+    .eq("status", "AWAITING_VERIFICATION")
+    .not("seeker_confirmed_at", "is", null)
+    .lte("seeker_confirmed_at", now.toISOString())
+    .order("seeker_confirmed_at", { ascending: true });
+  if (error) throw error;
+  return (data as ConnectionRow[]) ?? [];
+}
+
+/**
+ * Verified connections whose mandatory hold (`release_hold_until`) has passed
+ * (Phase 14, §5.7). These are released by the sweep — the platform can never
+ * stall payment indefinitely.
+ */
+export async function listVerifiedHeld(
+  now: Date = new Date()
+): Promise<ConnectionRow[]> {
+  const { data, error } = await sc()
+    .from("connections")
+    .select("*")
+    .eq("status", "VERIFIED")
+    .not("release_hold_until", "is", null)
+    .lte("release_hold_until", now.toISOString())
+    .order("release_hold_until", { ascending: true });
+  if (error) throw error;
+  return (data as ConnectionRow[]) ?? [];
+}
+
 export async function getProgressReportsByConnection(
   connectionId: string
 ): Promise<ProgressReportRow[]> {

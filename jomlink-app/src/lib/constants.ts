@@ -25,8 +25,35 @@ export const FEES = {
   MIN_OPPORTUNITY_REWARD: 10 / 0.10,
   // Linker pays 10% service fee on each successful payout.
   LINKER_SERVICE_FEE_RATE: 0.10,
-  // Escrow auto-release window after completion (days).
+  // Escrow release FALLBACK window (days). The reward is released immediately
+  // when the Seeker marks a connection complete (Option A, 2026-10-15); this
+  // window only governs the safety-net sweep that pays out a completed connection
+  // which was never released, and gives a dispute time to freeze the escrow.
   RELEASE_WAIT_DAYS: 7,
+} as const;
+
+/**
+ * Verification-gated completion workflow (Phase 14, blueprint §5.7, §5.12.1).
+ *
+ * The Seeker CONFIRMS, the platform VERIFIES, and only the platform RELEASES
+ * escrow. Each actor is bounded by a timeout so that neither a silent party nor
+ * a stalled platform can hold the money hostage.
+ */
+export const COMPLETION = {
+  // Seeker must confirm/reject evidence within this window. Timeout auto-advances
+  // to verification — a silent Seeker can never block payment.
+  SEEKER_CONFIRM_WINDOW_DAYS: 3,
+  // Platform must verify within this window. Timeout auto-releases with a
+  // post-hoc review flag — the platform can never stall payment.
+  VERIFICATION_WINDOW_DAYS: 2,
+  // Linker may fix deficient evidence before it is treated as failure.
+  EVIDENCE_CURE_WINDOW_DAYS: 3,
+  // Post-release clawback window.
+  DISPUTE_WINDOW_DAYS: 7,
+  // Mandatory hold before release for high-risk completions.
+  HIGH_RISK_HOLD_DAYS: 7,
+  // Evidence submitted this soon after the accepted deadline is a risk signal.
+  MIN_HOURS_AFTER_DEADLINE: 24,
 } as const;
 
 /** Wallet top-up limits (MYR). */
@@ -89,6 +116,9 @@ export const OPPORTUNITY_STATUS_LABELS: Record<string, string> = {
   IN_PROGRESS: "In Progress",
   APPOINTMENT_SCHEDULED: "Appointment Scheduled",
   AWAITING_VERIFICATION: "Awaiting Verification",
+  EVIDENCE_SUBMITTED: "Evidence Submitted",
+  AWAITING_SEEKER_CONFIRMATION: "Awaiting Seeker Confirmation",
+  VERIFIED: "Verified",
   COMPLETED: "Completed",
   DISPUTED: "Disputed",
   FAILED: "Failed",

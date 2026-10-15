@@ -10,6 +10,124 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates are ISO
 
 ---
 
+## [Built] — 2026-10-15 · Phase 14 — verification-gated escrow release
+
+> **Built the fix for the money-path loophole specced earlier today** (see the
+> `[Spec]` entry below). The Seeker no longer pays: they **confirm**, the platform
+> **verifies**, and only the platform **releases** escrow.
+
+### Added
+- **`supabase/phase-14-verification-gated-release.sql`** — adds the completion
+  enum values (`EVIDENCE_SUBMITTED`, `AWAITING_SEEKER_CONFIRMATION`, `VERIFIED`)
+  and the completion-workflow columns on `connections` (`evidence_submitted_at`,
+  `seeker_confirmed_at`, `seeker_confirmation_status`, `verification_status`,
+  `verified_at`, `verification_notes`, `risk_score`, `risk_level`,
+  `release_hold_until`). Idempotent. **⚠️ Not yet applied.**
+- **`src/lib/verification.ts`** — pure `scoreCompletionRisk()` + `isHighRisk()`
+  (metadata-based: instant evidence, first-time pair, zero progress reports,
+  missing target acknowledgement). `verification.test.ts` (14 tests).
+- **`src/lib/completion.ts`** — the shared `completeAndRelease()` + new
+  `verifyCompletionCore()` money-path core (plain module, not `"use server"`).
+- **`src/app/api/connections/verification-sweep/route.ts`** — cron entry point
+  running the three timeout stages.
+
+### Changed
+- **`src/app/actions/completions.ts`** — **deleted** `markConnectionCompleteAction`
+  (the Seeker-as-payer loophole). New `confirmEvidenceAction` (Seeker: confirm →
+  `AWAITING_VERIFICATION` with **no money movement**, or reject → `DISPUTED` +
+  escrow `HELD`) and `verifyCompletionAction` (platform-only, permission-gated).
+- **`src/app/actions/evidence.ts`** — `submitEvidenceAction` now advances the
+  connection to `EVIDENCE_SUBMITTED` and stamps `evidence_submitted_at`.
+- **`src/app/actions/transactions.ts`** — new `runVerificationSweep()`
+  (auto-advance → auto-verify → auto-release). `runAutoReleaseCheck()` remains the
+  7-day fallback.
+- **`src/lib/status.ts`** — allow-list predicates `isSeekerConfirmable`,
+  `isVerifiable`, `isReleasable`, `isInCompletionWorkflow`; new labels/variants.
+  `status.test.ts` extended (29 tests).
+- **`src/lib/queries.ts`** — `listAwaitingSeekerConfirmation`,
+  `listAwaitingVerification`, `listVerifiedHeld`.
+- **`src/lib/jomlink-types.ts`** — `ConnectionRow` gained the 9 workflow columns.
+- **`src/lib/constants.ts`** — `COMPLETION` timeout constants; new labels.
+- **UI** — `dashboard/connections/[id]` is role-aware: the Seeker gets
+  Confirm/Reject controls, the Linker a read-only workflow status.
+
+### Verified
+- `npx tsc --noEmit` clean · `npm run build` passes (44 routes) · `npm test`
+  passes (88 tests, +25 for Phase 14) · eslint clean.
+
+---
+
+## [Spec] — 2026-10-15 · Verification-gated escrow release (Phase 14)
+
+> **Loophole found in the blueprint's money path:** the Seeker is the **sole
+> arbiter of both "completion" and "payment release"** — `markConnectionCompleteAction`
+> is Seeker-only and calls `settleRewardRelease()` in the same action, so the
+> Seeker's click *is* the payment, with no evidence gate and no platform
+> verification. Enables collusion (fake completion → withdraw), free meetings
+> (Seeker ghosts, Linker unpaid), and toothless disputes (release is immediate).
+>
+> **Fix (spec only, not yet built):** invert the model — the Seeker *confirms*,
+> the platform *verifies*, and only the platform *releases* escrow. New completion
+> state machine (`EVIDENCE_SUBMITTED → AWAITING_SEEKER_CONFIRMATION →
+> AWAITING_VERIFICATION → VERIFIED → RELEASED`) with timeout windows so no single
+> party (Seeker, Linker, or platform) can stall or unilaterally trigger payment.
+>
+> See `jomlink-app/docs/phase-14-verification-gated-release.md`.
+
+### Docs
+- **Blueprint §5.7** rewritten as a platform-owned, verification-gated release
+  model (state machine + transition table + timeout constants); **§5.12.1
+  Anti-Collusion Gates** added; §3.11 status list, §5.16/§5.17 flows, and the
+  §10.2/§10.16 feature lists updated to match.
+- **New** `jomlink-app/docs/phase-14-verification-gated-release.md` — the
+  implementation spec (migration, code changes, risk rules, Definition of Done).
+- `PROJECT-TRACKING.md` — Phase 14 added to the board; new **#0** urgent gap;
+  migration row added. `00-project-plan.md` roadmap + `docs/README.md` index
+  updated.
+
+---
+
+## [Fix] — 2026-10-15 · Escrow releases immediately on completion (Option A)
+
+> **Bug:** completing a connection left the reward stuck in "Pending escrow".
+> Completion and release were **two separate actions on two different pages**, so
+> the money only moved if the Seeker found and pressed a second button. The
+> blueprint's §5.16 / §5.17 flows describe a **single** "Payment Release" step, so
+> this was a bug. **Fix:** the reward now releases **immediately** when the Seeker
+> marks the connection complete; the 7-day window is a **fallback only**. No
+> migration required. `npm test` **67 passing**.
+
+### Changed
+- **`markConnectionCompleteAction`** (`src/app/actions/completions.ts`) now
+  releases the escrowed reward in the **same action** that marks the connection
+  complete, and sets `release_status = "RELEASED"`. Idempotent (skips a
+  connection already `RELEASED`/`REFUNDED`/`VOID`/`HELD`). If the release call
+  fails, the connection still completes with `release_status = "PENDING_RELEASE"`
+  so the 7-day fallback sweep recovers it — the error is logged loudly.
+- **`FEES.RELEASE_WAIT_DAYS`** is now documented as the **fallback** window, not
+  the payment delay.
+
+### Added
+- **`src/lib/release.ts`** — `settleRewardRelease()`, the single money-movement
+  path (escrow → Linker reward, Linker → platform 10% fee, COMPLETED payout).
+  Extracted from the `"use server"` action file so it is shareable without being
+  its own endpoint. Used by the completion action, the legacy manual-release
+  action, and the fallback sweep.
+
+### Docs
+- **Blueprint §5.7 — new "Escrow Release Model (authoritative)"** section;
+  §5.12, §3.9, the Connection System feature lists, and the §5.17 flow updated to
+  say completion **pays** the Linker and the 7-day window is a safety net.
+- `docs/phase-05-transactions.md` (new 2026-10-15 update section),
+  `docs/phase-06-connection.md`; `/fees` and `/how-it-works` copy; connection-page
+  completion button ("Mark complete & release reward").
+
+### UI
+- Opportunity page: the manual "Release reward" card is now a **recovery action**
+  only — hidden once the connection's `release_status` is settled.
+
+---
+
 ## [Refinements] — 2026-10-12 · Optional proposal reward, escrow payout visibility & bank withdrawals
 
 > Three ship-blocking gaps closed after Phase 13: Linkers are **no longer forced

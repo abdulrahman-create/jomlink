@@ -119,6 +119,7 @@ export function resolveNotificationHref(
     type.startsWith("TRANSACTION") ||
     type.startsWith("WALLET_") ||
     type === "REWARD_RELEASE" ||
+    type === "REWARD_RELEASED" ||
     type === "LINKER_SERVICE_FEE" ||
     type === "LISTING_FEE"
   ) {
