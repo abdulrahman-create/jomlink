@@ -1,0 +1,26 @@
+{
+  "runs": [
+    {
+      "date": "2026-10-06T05:06:15.656697+00:00",
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "files": 149,
+      "note": "Phase 11 refresh - src/ only, generated/ excluded (AST-only, no LLM)"
+    },
+    {
+      "date": "2026-10-12T08:52:15.240913+00:00",
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "files": 77
+    },
+    {
+      "date": "2026-10-12T08:55:04.366455+00:00",
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "files": 77,
+      "note": "code-only incremental AST update"
+    }
+  ],
+  "total_input_tokens": 0,
+  "total_output_tokens": 0
+}
