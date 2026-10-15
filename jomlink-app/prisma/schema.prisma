@@ -782,6 +782,7 @@ model kyc_records {
   status          VerificationStatus @default(PENDING)
   documentType    String?
   documentRef     String?
+  documentPath    String?
   reviewedBy      String?
   reviewedAt      DateTime?
   expiryDate      DateTime?

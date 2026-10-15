@@ -39,8 +39,15 @@ at a glance. For a reverse-chronological *"what happened when"*, see
 | 12 | Lifecycle guards + notification deep-links + money path | ✅ Done | `phase-12-lifecycle-guards-and-money-path.md` |
 | 13 | Appointment notifications + track records + deadline warnings | ✅ Done | `phase-13-appointments-and-deadline-warnings.md` |
 | 14 | Verification-gated escrow release | ✅ Done (⚠️ migration not applied) | `phase-14-verification-gated-release.md` |
+| 15 | Compliance hardening (category deny-list, AML/KYC-before-payout, biometric purge) | 🔵 Planned | `phase-15-compliance-hardening.md` |
 
 **MVP is feature-complete.** Remaining work is production hardening (below).
+
+> 🔴 **Legal blockers identified 2026-10-15** (see `legal-compliance-gaps.md`): the
+> government and investor opportunity categories are **only flagged, not disabled** in
+> code; payouts have **no AML/KYC gate**; and the biometric **purge job is missing**. The
+> blueprint was updated to **v1.2** to mandate server-side category deny-list (§11.9.1) and
+> AML/sanctions screening (§11.9.2). **Phase 15** is the implementation plan.
 
 > ⚠️ **Phase 12 left one data issue unresolved by design** — a stale **RM 2,200
 > escrow on an RM 1,500 opportunity**, on a `COMPLETED` connection, created before

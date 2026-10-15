@@ -135,10 +135,12 @@ export default async function AdminKycPage({
                           {k.document_type || "Passport / National ID"}
                         </div>
                         {k.document_ref && (
+                          <div className="mt-1 text-[11px] text-muted-foreground font-mono">
+                            Ref: {k.document_ref}
+                          </div>
+                        )}
+                        {k.document_path && (
                           <div className="mt-1 flex items-center gap-2">
-                            <span className="text-[11px] text-muted-foreground font-mono">
-                              Ref: {k.document_ref}
-                            </span>
                             <a
                               href={`/api/admin/kyc/${k.id}/document`}
                               target="_blank"
@@ -170,7 +172,13 @@ export default async function AdminKycPage({
                         {formatDate(k.created_at)}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        {canWrite && k.status !== "VERIFIED" && (
+                        {!canWrite ? (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        ) : k.status === "VERIFIED" ? (
+                          <span className="text-xs text-muted-foreground">Approved</span>
+                        ) : k.status === "REJECTED" ? (
+                          <span className="text-xs text-muted-foreground">Rejected</span>
+                        ) : (
                           <div className="inline-flex items-center gap-1.5">
                             <form action={reviewKycAction} className="inline-flex">
                               <input type="hidden" name="kycId" value={k.id} />
@@ -419,7 +427,13 @@ export default async function AdminKycPage({
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        {canWrite && !r.verified && (
+                        {!canWrite ? (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        ) : r.verified ? (
+                          <span className="text-xs text-muted-foreground">Verified</span>
+                        ) : r.verification_status === "REJECTED" ? (
+                          <span className="text-xs text-muted-foreground">Rejected</span>
+                        ) : (
                           <div className="inline-flex items-center gap-1.5">
                             <form action={reviewRelationshipAction} className="inline-flex">
                               <input type="hidden" name="relationshipId" value={r.id} />

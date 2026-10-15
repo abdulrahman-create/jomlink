@@ -102,12 +102,15 @@ export async function submitKycAction(
     if (upErr) throw upErr;
 
     // Store the object path (not a public URL - bucket is private). The admin
-    // review flow reads it server-side via the service-role client.
+    // review flow reads it server-side via the service-role client to mint a
+    // short-lived signed URL. Without `document_path` the admin page has no
+    // bucket key to sign and shows no "View document" link (#KYC-visibility).
     await createKycRecord({
       user_id: user.id,
       status: "PENDING",
       document_type: parsed.data.documentType,
       document_ref: parsed.data.documentRef || null,
+      document_path: path,
     });
 
     revalidatePath("/dashboard/kyc");

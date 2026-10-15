@@ -21,6 +21,8 @@ Phased build plan for the Jomlink business-introductions marketplace.
 | `phase-12-lifecycle-guards-and-money-path.md` | Centralised lifecycle state machine, notification deep-links, Linker negotiation UI, escrow/affordability fixes |
 | `phase-13-appointments-and-deadline-warnings.md` | Appointment notifications + track records, rejection recovery, connection-list link, running-out-of-time deadline warnings |
 | `phase-14-verification-gated-release.md` | **Built** — verification-gated escrow release: Seeker confirms, platform verifies, only the platform releases (⚠️ migration not applied) |
+| `phase-15-compliance-hardening.md` | **Planned** — category deny-list, AML/KYC-before-payout, biometric purge job (closes legal loopholes) |
+| `legal-compliance-gaps.md` | **Legal gaps checklist** — loopholes vs Malaysian law, for counsel review |
 
 ## How to use
 

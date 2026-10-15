@@ -423,7 +423,10 @@ export interface KycRecordRow {
   user_id: string;
   status: "UNVERIFIED" | "PENDING" | "VERIFIED" | "REJECTED" | "EXPIRED" | "SUSPENDED";
   document_type: string | null;
+  /** Member-typed document reference (e.g. passport number) - NOT a bucket key. */
   document_ref: string | null;
+  /** Object path inside the private `kyc-documents` bucket, for admin signing. */
+  document_path: string | null;
   reviewed_by: string | null;
   reviewed_at: string | null;
   expiry_date: string | null;

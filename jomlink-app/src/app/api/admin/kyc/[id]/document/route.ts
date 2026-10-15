@@ -31,14 +31,19 @@ export async function GET(
   const { id } = await params;
   try {
     const kyc = await getKycRecordById(id);
-    if (!kyc?.document_ref) {
-      return NextResponse.json({ error: "No document on record" }, { status: 404 });
+    // `document_ref` is the member-typed reference (e.g. passport number), not
+    // a storage key - sign the actual bucket object path instead.
+    if (!kyc?.document_path) {
+      return NextResponse.json(
+        { error: "No document file on record" },
+        { status: 404 }
+      );
     }
 
     const supabase = getServiceRoleClient();
     const { data, error } = await supabase.storage
       .from(KYC_BUCKET)
-      .createSignedUrl(kyc.document_ref, 60);
+      .createSignedUrl(kyc.document_path, 60);
     if (error || !data?.signedUrl) {
       console.error("kyc document signed URL error", error);
       return NextResponse.json({ error: "Could not generate document link" }, { status: 500 });

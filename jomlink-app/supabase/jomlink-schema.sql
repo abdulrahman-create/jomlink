@@ -524,6 +524,10 @@ create table if not exists jomlink.kyc_records (
   status          jomlink.verification_status not null default 'PENDING',
   document_type   text,
   document_ref    text,
+  -- Storage object path inside the private `kyc-documents` bucket. Required for
+  -- admins to render a signed URL; `document_ref` holds the member-typed
+  -- reference (e.g. passport number), NOT the bucket key.
+  document_path   text,
   reviewed_by     text,
   reviewed_at     timestamptz,
   expiry_date     timestamptz,

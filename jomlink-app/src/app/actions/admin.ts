@@ -385,6 +385,12 @@ export async function reviewKycAction(formData: FormData) {
 
   const kyc = await getKycRecordById(kycId);
   if (kyc) {
+    // Review is a terminal decision: once a record is VERIFIED or REJECTED the
+    // verdict is final. The UI hides the buttons, but a replayed/stale form
+    // submission must not silently flip an already-settled record.
+    if (kyc.status === "VERIFIED" || kyc.status === "REJECTED") {
+      return;
+    }
     await updateKycRecord(kycId, {
       status,
       notes,
