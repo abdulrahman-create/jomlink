@@ -1,12 +1,10 @@
 import Link from "next/link";
 import {
-  Briefcase,
   Search,
   ExternalLink,
   ShieldAlert,
   CheckCircle2,
   XCircle,
-  AlertTriangle,
 } from "lucide-react";
 import { requireAdmin } from "@/lib/rbac";
 import { listOpportunitiesForAdmin } from "@/lib/queries";

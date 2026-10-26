@@ -26,7 +26,7 @@ const admin = createClient(url, service, {
 
 const sc = () =>
   admin.schema("jomlink" as never) as unknown as {
-    from: (t: string) => any;
+    from: (t: string) => any; // eslint-disable-line @typescript-eslint/no-explicit-any
   };
 
 const VALID_ROLES = [

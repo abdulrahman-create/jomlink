@@ -12,8 +12,6 @@ import {
   UserCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   submitKycBiometricAction,
   withdrawBiometricConsentAction,
@@ -198,7 +196,6 @@ export function BiometricKycForm() {
         <div className="space-y-3">
           <p className="text-sm font-semibold text-foreground">1 · Capture your face</p>
           <div className="relative overflow-hidden rounded-xl border border-border bg-slate-900">
-            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
             <video
               ref={videoRef}
               playsInline
@@ -206,6 +203,9 @@ export function BiometricKycForm() {
               className="aspect-video w-full object-cover"
             />
             {selfie && (
+              // Local `data:` URL from canvas — next/image cannot optimise these
+              // and the bitmap never leaves the device until submit.
+              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={selfie.dataUrl}
                 alt="Captured selfie"
@@ -263,6 +263,7 @@ export function BiometricKycForm() {
           <div className="flex items-center gap-4">
             <div className="flex h-24 w-36 items-center justify-center overflow-hidden rounded-lg border border-border bg-muted text-xs text-muted-foreground">
               {idImage ? (
+                // eslint-disable-next-line @next/next/no-img-element
                 <img src={idImage.dataUrl} alt="Identity document" className="h-full w-full object-cover" />
               ) : (
                 "No photo"

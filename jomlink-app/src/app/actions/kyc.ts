@@ -234,7 +234,6 @@ export async function withdrawBiometricConsentAction(): Promise<void> {
   await setBiometricConsent(user.id, false, BIOMETRIC_CONSENT_VERSION);
 
   const records = await getKycBiometricsByUser(user.id);
-  const supabase = getServiceRoleClient();
   const db = jomlinkSchema();
   const now = new Date().toISOString();
   for (const r of records) {

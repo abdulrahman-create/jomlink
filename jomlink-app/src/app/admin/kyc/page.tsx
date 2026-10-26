@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ShieldCheck, UserCheck, CheckCircle2, XCircle, Clock, ExternalLink, FileSearch, ScanFace } from "lucide-react";
+import { CheckCircle2, XCircle, FileSearch, ScanFace } from "lucide-react";
 import { requireAdmin } from "@/lib/rbac";
 import {
   listKycRecords,

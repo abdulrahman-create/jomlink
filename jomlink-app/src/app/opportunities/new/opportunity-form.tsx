@@ -16,7 +16,6 @@ import {
   type OpportunityState,
 } from "@/app/actions/opportunities";
 import { computeFunding } from "@/lib/funding";
-import type { BusinessProfileRow } from "@/lib/jomlink-types";
 
 const RESTRICTED = "GOVERNMENT_PUBLIC_SECTOR";
 
@@ -31,10 +30,8 @@ function money(n: number) {
 const initialState: OpportunityState = {};
 
 export function OpportunityForm({
-  businessProfiles,
   defaultCountry,
 }: {
-  businessProfiles: BusinessProfileRow[];
   defaultCountry: string;
 }) {
   const router = useRouter();

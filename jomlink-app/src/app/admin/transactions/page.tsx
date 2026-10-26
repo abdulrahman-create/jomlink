@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { Wallet, ArrowUpRight, ArrowDownLeft, RefreshCcw, Landmark } from "lucide-react";
 import { requireAdmin } from "@/lib/rbac";
 import {
   listAllTransactionsAdmin,
@@ -7,7 +6,7 @@ import {
   listAllRefundsAdmin,
   listPendingPayoutRequestsAdmin,
 } from "@/lib/queries";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatMoney, formatDate } from "@/lib/constants";
 import { MarkPayoutPaidButton } from "./mark-paid-button";
@@ -106,7 +105,7 @@ export default async function AdminTransactionsPage({
                     </td>
                   </tr>
                 ) : (
-                  transactions.map((t: any) => (
+                  transactions.map((t) => (
                     <tr key={t.id} className="hover:bg-slate-50/50 transition-colors">
                       <td className="px-4 py-3 text-muted-foreground whitespace-nowrap font-sans">
                         {formatDate(t.created_at)}
@@ -169,7 +168,7 @@ export default async function AdminTransactionsPage({
                     </td>
                   </tr>
                 ) : (
-                  payouts.map((p: any) => (
+                  payouts.map((p) => (
                     <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
                       <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
                         {formatDate(p.created_at)}
@@ -227,7 +226,7 @@ export default async function AdminTransactionsPage({
                     </td>
                   </tr>
                 ) : (
-                  payoutRequests.map((p: any) => (
+                  payoutRequests.map((p) => (
                     <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
                       <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
                         {formatDate(p.requested_at ?? p.created_at)}
@@ -295,7 +294,7 @@ export default async function AdminTransactionsPage({
                     </td>
                   </tr>
                 ) : (
-                  refunds.map((r: any) => (
+                  refunds.map((r) => (
                     <tr key={r.id} className="hover:bg-slate-50/50 transition-colors">
                       <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
                         {formatDate(r.created_at)}

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Scale, AlertTriangle, CheckCircle, ExternalLink, ShieldAlert, FileText } from "lucide-react";
+import { Scale, CheckCircle, ExternalLink, FileText } from "lucide-react";
 import { requireAdmin } from "@/lib/rbac";
 import { listDisputes } from "@/lib/queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";

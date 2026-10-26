@@ -135,10 +135,16 @@ export function formatMYR(amount: number | string | null | undefined) {
   }).format(n);
 }
 
+/**
+ * Money label for the given amount.
+ * `currency` is accepted for display of historical rows; the platform is
+ * MYR-only today so it currently does not change the formatting.
+ */
 export function formatMoney(
   amount: number | string | null | undefined,
-  currency = "MYR"
+  currency?: string
 ) {
+  void currency;
   return formatMYR(amount);
 }
 

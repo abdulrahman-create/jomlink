@@ -91,9 +91,8 @@ export function BasicDetailsForm({
         {photoUrl && (
           <button
             type="button"
-            onClick={(e) => {
-              const form = (e.currentTarget as HTMLButtonElement).form;
-              if (form) void removeAvatarAction(new FormData(form));
+            onClick={() => {
+              void removeAvatarAction();
             }}
             className="ml-auto inline-flex items-center gap-1 rounded-md text-xs font-medium text-destructive hover:underline"
           >

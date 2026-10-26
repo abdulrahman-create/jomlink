@@ -10,6 +10,29 @@ function prefersReducedMotion(): boolean {
   );
 }
 
+const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+
+/**
+ * Subscribe to the `prefers-reduced-motion` media query without an effect.
+ * `getServerSnapshot` returns false so the first client render matches the
+ * server HTML (avoids a hydration mismatch); React then re-reads the real
+ * value from the client snapshot.
+ */
+function subscribeReducedMotion(onChange: () => void): () => void {
+  const mql = window.matchMedia?.(REDUCED_MOTION_QUERY);
+  if (!mql) return () => {};
+  mql.addEventListener("change", onChange);
+  return () => mql.removeEventListener("change", onChange);
+}
+
+function useReducedMotion(): boolean {
+  return React.useSyncExternalStore(
+    subscribeReducedMotion,
+    prefersReducedMotion,
+    () => false
+  );
+}
+
 /**
  * PageBackground
  * --------------
@@ -25,13 +48,7 @@ function prefersReducedMotion(): boolean {
  */
 export function PageBackground({ imageSrc }: { imageSrc: string }) {
   const [progress, setProgress] = React.useState(0);
-  // Must start as the server value (false) so the first client render matches
-  // the server HTML; the media query is applied after hydration.
-  const [reduced, setReduced] = React.useState(false);
-
-  React.useEffect(() => {
-    setReduced(prefersReducedMotion());
-  }, []);
+  const reduced = useReducedMotion();
 
   React.useEffect(() => {
     if (reduced) return;
@@ -42,7 +59,9 @@ export function PageBackground({ imageSrc }: { imageSrc: string }) {
       const doc = document.documentElement;
       const max = doc.scrollHeight - window.innerHeight;
       const p = max > 0 ? Math.min(1, Math.max(0, window.scrollY / max)) : 0;
-      setProgress(p);
+      // Skip same-value updates: effect-internal state sync is intentional here
+      // (scroll position is external browser state) but must stay idempotent.
+      setProgress((prev) => (prev === p ? prev : p));
     };
 
     const onScroll = () => {

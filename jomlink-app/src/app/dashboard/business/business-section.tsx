@@ -13,10 +13,9 @@ import {
   toggleRole,
   type BusinessState,
 } from "@/app/actions/profile";
-import type { BusinessProfileRow, JomlinkUserRow } from "@/lib/jomlink-types";
+import type { BusinessProfileRow } from "@/lib/jomlink-types";
 
 const initialState: BusinessState = {};
-const ROLE = "BOTH" as const;
 
 const OBJECTIVES = [
   "Seeking corporate clients",

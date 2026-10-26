@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { Users, Search, Shield, Ban, CheckCircle, ExternalLink } from "lucide-react";
+import { Search, Ban, CheckCircle, ExternalLink } from "lucide-react";
 import { requireAdmin } from "@/lib/rbac";
 import { listAllMembers } from "@/lib/queries";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/constants";
 import {

@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { getServiceRoleClient } from "@/lib/supabase/admin";
-import { JOMLINK_APP_TAG } from "@/lib/data";
 import {
   getProfileByUserId,
   upsertProfile,
@@ -127,7 +126,7 @@ async function uploadAvatarIfProvided(
   return { url };
 }
 
-export async function removeAvatarAction(formData: FormData): Promise<void> {
+export async function removeAvatarAction(): Promise<void> {
   const user = await getCurrentUser();
   if (!user) return;
 
@@ -349,9 +348,4 @@ export async function toggleRole(formData: FormData): Promise<void> {
   await setUserRole(user.id, requested);
   revalidatePath("/dashboard/profile");
   revalidatePath("/dashboard");
-}
-
-/** Set which account capability the user is actively using (for nav highlight). */
-export async function setActiveCapability(formData: FormData) {
-  return { success: true };
 }

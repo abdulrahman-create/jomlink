@@ -1,5 +1,6 @@
 import { getServiceRoleClient } from "@/lib/supabase/admin";
 import { JOMLINK_APP_TAG } from "@/lib/data";
+import type { UntypedSchemaClient } from "@/lib/data";
 import type {
   JomlinkUserRow,
   MemberProfileRow,
@@ -39,9 +40,14 @@ import type {
  */
 
 const sc = () =>
-  getServiceRoleClient() as unknown as {
-    from: (table: string) => any;
-  };
+  getServiceRoleClient() as unknown as UntypedSchemaClient;
+
+// ── Admin listing row shapes ─────────────────────────────────
+// These tables have NO foreign key to `users` (see resolveUserNames), so the
+// admin listings attach the resolved member separately instead of embedding.
+type ResolvedUser = { full_name: string | null; email: string | null };
+export type TransactionAdminRow = TransactionRow & { users: ResolvedUser | null };
+export type RefundAdminRow = RefundRow & { users: ResolvedUser | null };
 
 // ── Users / members ──────────────────────────────────────────
 export async function findMemberBySupabaseId(supabaseUserId: string) {
@@ -855,7 +861,9 @@ export async function updatePayout(
  * A member request is a payout row with method BANK_TRANSFER that has not yet
  * been released. Used by the admin payout queue.
  */
-export async function listPendingPayoutRequestsAdmin(limit = 100) {
+export async function listPendingPayoutRequestsAdmin(
+  limit = 100
+): Promise<PayoutAdminRow[]> {
   const { data, error } = await sc()
     .from("payouts")
     .select("*")
@@ -863,15 +871,11 @@ export async function listPendingPayoutRequestsAdmin(limit = 100) {
     .order("created_at", { ascending: true })
     .limit(limit);
   if (error) throw error;
-  const rows = data ?? [];
-  const names = await resolveUserNames(
-    rows.map((r: { recipient_id: string }) => r.recipient_id)
-  );
+  const rows = (data ?? []) as (PayoutRow & { recipient_id: string })[];
+  const names = await resolveUserNames(rows.map((r) => r.recipient_id));
   // Attach each recipient's saved bank account so the admin can transfer without
   // another lookup. `users` has no FK from payouts, so we fetch them in one query.
-  const recipientIds = Array.from(
-    new Set(rows.map((r: { recipient_id: string }) => r.recipient_id))
-  );
+  const recipientIds = Array.from(new Set(rows.map((r) => r.recipient_id)));
   let banks = new Map<
     string,
     { bank_name: string | null; bank_account_no: string | null; bank_account_name: string | null }
@@ -893,7 +897,7 @@ export async function listPendingPayoutRequestsAdmin(limit = 100) {
       )
     );
   }
-  return rows.map((r: { recipient_id: string }) => ({
+  return rows.map((r) => ({
     ...r,
     users: names.get(r.recipient_id) ?? null,
     bank: banks.get(r.recipient_id) ?? null,
@@ -2229,50 +2233,61 @@ async function resolveUserNames(
   );
 }
 
-export async function listAllTransactionsAdmin(limit = 50) {
+/** Admin payout queue row: a payout plus its recipient's name and saved bank. */
+export type PayoutAdminRow = PayoutRow & {
+  users: { full_name: string | null; email: string | null } | null;
+  bank: {
+    bank_name: string | null;
+    bank_account_no: string | null;
+    bank_account_name: string | null;
+  } | null;
+};
+
+export async function listAllTransactionsAdmin(
+  limit = 50
+): Promise<TransactionAdminRow[]> {
   const { data, error } = await sc()
     .from("transactions")
     .select("*")
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error) throw error;
-  const rows = data ?? [];
-  const names = await resolveUserNames(rows.map((r: { user_id: string }) => r.user_id));
-  return rows.map((r: { user_id: string }) => ({
+  const rows = (data ?? []) as (TransactionRow & { user_id: string })[];
+  const names = await resolveUserNames(rows.map((r) => r.user_id));
+  return rows.map((r) => ({
     ...r,
     users: names.get(r.user_id) ?? null,
   }));
 }
 
-export async function listAllPayoutsAdmin(limit = 50) {
+export async function listAllPayoutsAdmin(limit = 50): Promise<PayoutAdminRow[]> {
   const { data, error } = await sc()
     .from("payouts")
     .select("*")
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error) throw error;
-  const rows = data ?? [];
-  const names = await resolveUserNames(
-    rows.map((r: { recipient_id: string }) => r.recipient_id)
-  );
-  return rows.map((r: { recipient_id: string }) => ({
+  const rows = (data ?? []) as (PayoutRow & { recipient_id: string })[];
+  const names = await resolveUserNames(rows.map((r) => r.recipient_id));
+  return rows.map((r) => ({
     ...r,
     users: names.get(r.recipient_id) ?? null,
+    bank: null,
   }));
 }
 
-export async function listAllRefundsAdmin(limit = 50) {
+export async function listAllRefundsAdmin(
+  limit = 50
+): Promise<RefundAdminRow[]> {
   const { data, error } = await sc()
     .from("refunds")
     .select("*")
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error) throw error;
-  const rows = data ?? [];
-  const names = await resolveUserNames(
-    rows.map((r: { recipient_id: string }) => r.recipient_id)
-  );
-  return rows.map((r: { recipient_id: string }) => ({
+  const rows = (data ?? []) as (RefundRow & { recipient_id: string })[];
+  const names = await resolveUserNames(rows.map((r) => r.recipient_id));
+  return rows.map((r) => ({
     ...r,
     users: names.get(r.recipient_id) ?? null,
   }));

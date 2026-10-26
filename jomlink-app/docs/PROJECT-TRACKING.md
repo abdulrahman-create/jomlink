@@ -38,7 +38,7 @@ at a glance. For a reverse-chronological *"what happened when"*, see
 | 11 | Match score + relationship save + schema routing | ✅ Done | `phase-11-match-score-and-data-layer.md` |
 | 12 | Lifecycle guards + notification deep-links + money path | ✅ Done | `phase-12-lifecycle-guards-and-money-path.md` |
 | 13 | Appointment notifications + track records + deadline warnings | ✅ Done | `phase-13-appointments-and-deadline-warnings.md` |
-| 14 | Verification-gated escrow release | ✅ Done (⚠️ migration not applied) | `phase-14-verification-gated-release.md` |
+| 14 | Verification-gated escrow release | ✅ Done  | `phase-14-verification-gated-release.md` |
 | 15 | Compliance hardening (category deny-list, AML/KYC-before-payout, biometric purge) | 🔵 Planned | `phase-15-compliance-hardening.md` |
 
 **MVP is feature-complete.** Remaining work is production hardening (below).

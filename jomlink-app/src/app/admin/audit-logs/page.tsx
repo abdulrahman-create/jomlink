@@ -1,8 +1,7 @@
 import Link from "next/link";
-import { History, Search, ShieldAlert, Filter } from "lucide-react";
 import { requireAdmin } from "@/lib/rbac";
 import { listAuditLogs } from "@/lib/queries";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/constants";
 

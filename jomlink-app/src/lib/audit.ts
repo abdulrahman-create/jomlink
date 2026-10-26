@@ -1,10 +1,9 @@
 import { getServiceRoleClient } from "@/lib/supabase/admin";
+import type { UntypedSchemaClient } from "@/lib/data";
 import type { AuditLogRow } from "@/lib/jomlink-types";
 
 const sc = () =>
-  getServiceRoleClient() as unknown as {
-    from: (table: string) => any;
-  };
+  getServiceRoleClient() as unknown as UntypedSchemaClient;
 
 export interface CreateAuditLogParams {
   adminId?: string | null;
