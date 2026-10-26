@@ -12,6 +12,11 @@ import {
 } from "@/lib/queries";
 import { chargePostingDeposit } from "@/lib/posting";
 import { OPPORTUNITY_CATEGORIES, FEES, formatMYR } from "@/lib/constants";
+import {
+  checkCategoryPostable,
+  restrictedConfidentialityFor,
+} from "@/lib/category-policy";
+import { recordAuditLog, AUDIT_ACTIONS } from "@/lib/audit";
 
 // ── Validation ──────────────────────────────────────────────
 const categoryValues = OPPORTUNITY_CATEGORIES.map((c) => c.value) as [
@@ -61,6 +66,40 @@ export type OpportunityState = {
 const RESTRICTED_CATEGORY = "GOVERNMENT_PUBLIC_SECTOR";
 
 /**
+ * Record a blocked attempt to post/edit into a compliance-disabled category
+ * (blueprint §11.9.1 rule 4 — enablement decisions and their refusals are
+ * audited). Best-effort: an audit failure must never surface as a user error or
+ * allow the blocked write through.
+ */
+async function auditBlockedCategory(params: {
+  userId: string;
+  userEmail: string | null;
+  category: string;
+  code: string;
+  intent: "create" | "publish" | "edit";
+  opportunityId?: string | null;
+}): Promise<void> {
+  try {
+    await recordAuditLog({
+      adminId: null,
+      action: AUDIT_ACTIONS.OPPORTUNITY_CATEGORY_BLOCKED,
+      entity: "OPPORTUNITY",
+      entityId: params.opportunityId ?? null,
+      details: {
+        category: params.category,
+        reason: params.code,
+        intent: params.intent,
+        attemptedBy: params.userEmail,
+        userId: params.userId,
+        depositCharged: false,
+      },
+    });
+  } catch (e) {
+    console.error("auditBlockedCategory: could not record audit event", e);
+  }
+}
+
+/**
  * Create a NEW opportunity.
  *
  * The form supports two intents (via the `intent` field):
@@ -104,6 +143,22 @@ export async function createOpportunityAction(
   }
 
   const d = parsed.data;
+
+  // §11.9.1 — server-side deny-list, default-deny. Rejected for BOTH intents
+  // (draft and publish) and BEFORE any opportunity row or deposit exists, so a
+  // blocked listing can never be created and never charges the posting deposit.
+  const decision = checkCategoryPostable(d.category);
+  if (!decision.allowed) {
+    await auditBlockedCategory({
+      userId: user.id,
+      userEmail: user.email,
+      category: d.category,
+      code: decision.code,
+      intent: "create",
+    });
+    return { error: decision.message };
+  }
+
   const isRestricted = d.category === RESTRICTED_CATEGORY;
 
   const values: Record<string, unknown> = {
@@ -121,7 +176,7 @@ export async function createOpportunityAction(
     deadline: d.deadline ? d.deadline.toISOString() : null,
     offer_amount: d.offerAmount,
     currency: "MYR",
-    confidentiality: isRestricted ? "RESTRICTED" : d.confidentiality,
+    confidentiality: restrictedConfidentialityFor(d.category, d.confidentiality),
     additional_requirements: d.additionalRequirements || null,
     is_restricted_category: isRestricted,
     status: "DRAFT",
@@ -188,6 +243,22 @@ export async function publishOpportunityAction(
   }
   if (opp.status !== "DRAFT") {
     return { error: "Only draft opportunities can be published." };
+  }
+
+  // §11.9.1 rule 2 — a draft created before its category was disabled (or
+  // smuggled in by a legacy row) must not be publishable. Refuse BEFORE the
+  // deposit is taken and leave the draft untouched for the Seeker to re-categorise.
+  const decision = checkCategoryPostable(opp.category);
+  if (!decision.allowed) {
+    await auditBlockedCategory({
+      userId: user.id,
+      userEmail: user.email,
+      category: opp.category,
+      code: decision.code,
+      intent: "publish",
+      opportunityId: opp.id,
+    });
+    return { error: decision.message };
   }
 
   try {
@@ -294,6 +365,24 @@ export async function updateOpportunityAction(
   }
 
   const d = parsed.data;
+
+  // §11.9.1 — editing a live listing INTO a disabled category is the same entry
+  // point as posting it, so it is blocked identically (storage flags alone are
+  // not enforcement). An existing row already stored under a now-disabled
+  // category may still be edited as long as it does not move into one.
+  const decision = checkCategoryPostable(d.category);
+  if (!decision.allowed) {
+    await auditBlockedCategory({
+      userId: user.id,
+      userEmail: user.email,
+      category: d.category,
+      code: decision.code,
+      intent: "edit",
+      opportunityId: opp.id,
+    });
+    return { error: decision.message };
+  }
+
   const isRestricted = d.category === RESTRICTED_CATEGORY;
 
   const values: Record<string, unknown> = {
@@ -311,7 +400,7 @@ export async function updateOpportunityAction(
     deadline: d.deadline ? d.deadline.toISOString() : null,
     offer_amount: d.offerAmount,
     currency: "MYR",
-    confidentiality: isRestricted ? "RESTRICTED" : d.confidentiality,
+    confidentiality: restrictedConfidentialityFor(d.category, d.confidentiality),
     additional_requirements: d.additionalRequirements || null,
     is_restricted_category: isRestricted,
   };

@@ -10,12 +10,17 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
-import { OPPORTUNITY_CATEGORIES, FEES, formatMYR } from "@/lib/constants";
+import { PUBLIC_OPPORTUNITY_CATEGORIES, FEES, formatMYR } from "@/lib/constants";
 import {
   createOpportunityAction,
   type OpportunityState,
 } from "@/app/actions/opportunities";
 import { computeFunding } from "@/lib/funding";
+
+// §11.9.1 rule 3 — only ENABLED categories are offered. The server re-checks
+// the submitted value with `checkCategoryPostable`, so hiding them here is a
+// usability nicety, not the enforcement.
+const SELECTABLE_CATEGORIES = PUBLIC_OPPORTUNITY_CATEGORIES;
 
 const RESTRICTED = "GOVERNMENT_PUBLIC_SECTOR";
 
@@ -41,7 +46,7 @@ export function OpportunityForm({
   );
 
   const [category, setCategory] = React.useState<string>(
-    OPPORTUNITY_CATEGORIES[0].value
+    SELECTABLE_CATEGORIES[0].value
   );
   const [reward, setReward] = React.useState("");
   const isRestricted = category === RESTRICTED;
@@ -95,7 +100,7 @@ export function OpportunityForm({
               <Select
                 id="category"
                 name="category"
-                options={OPPORTUNITY_CATEGORIES.map((c) => ({ value: c.value, label: c.label }))}
+                options={SELECTABLE_CATEGORIES.map((c) => ({ value: c.value, label: c.label }))}
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
                 required

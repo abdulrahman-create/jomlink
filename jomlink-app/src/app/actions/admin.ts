@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireAdmin } from "@/lib/rbac";
+import { requireAdmin, type CurrentAdminContext } from "@/lib/rbac";
 import { recordAuditLog, AUDIT_ACTIONS } from "@/lib/audit";
 import {
   updateUserStatus,
@@ -20,9 +20,21 @@ import {
   getUserById,
   updateTransactionStatus,
   getWalletBalance,
+  isKycSatisfiedForPayout,
+  sumPayoutsInWindow,
+  lastWalletTopUpAt,
 } from "@/lib/queries";
 import { accounts, doubleEntry } from "@/lib/ledger";
 import { chargePostingDeposit } from "@/lib/posting";
+import { checkCategoryPostable } from "@/lib/category-policy";
+import {
+  screenPayout,
+  canSettlePayout,
+  type ScreenResult,
+} from "@/lib/screening";
+import { kycDevBypassState } from "@/lib/kyc-dev-bypass";
+import { AML } from "@/lib/constants";
+import type { PayoutRow } from "@/lib/jomlink-types";
 import { notify, notifyUser } from "@/lib/notify";
 
 // ── Member Management Actions ────────────────────────────────
@@ -120,6 +132,153 @@ export async function updateMemberRoleAction(formData: FormData) {
 
 // ── Payout settlement (member bank withdrawals) ──────────────
 
+/** Has this payout already been cleared by Compliance, and by whom? */
+function isCleared(payout: PayoutRow): boolean {
+  return !!payout.cleared_at && !!payout.cleared_by;
+}
+
+/**
+ * Run the §11.9.2 AML / sanctions / PEP screen for a payout and **record the
+ * result immutably** before any money moves.
+ *
+ * Returns the screen. The caller decides whether settlement may proceed
+ * (`canSettlePayout`) — this function never settles anything itself, so a
+ * screen can be re-run safely and always leaves an attributable audit event.
+ */
+async function screenPayoutForSettlement(
+  payout: PayoutRow,
+  admin: CurrentAdminContext
+): Promise<ScreenResult> {
+  const [verified, payoutsInWindow, lastTopUpAt, recipient] = await Promise.all([
+    // Honours the dev/test bypass (impossible to enable in production).
+    isKycSatisfiedForPayout(payout.recipient_id),
+    sumPayoutsInWindow(payout.recipient_id, AML.CUMULATIVE_WINDOW_DAYS),
+    lastWalletTopUpAt(payout.recipient_id),
+    getUserById(payout.recipient_id),
+  ]);
+
+  const screen = screenPayout({
+    kycVerified: verified,
+    // Screen the identity the money is actually going to: the beneficiary name
+    // on the bank account, plus the registered member name.
+    names: [
+      recipient?.full_name ?? null,
+      recipient?.bank_account_name ?? null,
+    ],
+    amount: Number(payout.net_amount),
+    payoutsInWindow,
+    lastTopUpAt,
+  });
+
+  await recordAuditLog({
+    adminId: admin.user.id,
+    action: AUDIT_ACTIONS.PAYOUT_SCREEN_RECORDED,
+    entity: "PAYOUT",
+    entityId: payout.id,
+    details: {
+      recipientId: payout.recipient_id,
+      amount: Number(payout.net_amount),
+      risk: screen.risk,
+      codes: screen.codes,
+      reasons: screen.reasons,
+      listVersion: screen.listVersion,
+      providerConfigured: screen.providerConfigured,
+      screenedBy: admin.user.email,
+      screenedAt: new Date().toISOString(),
+      // True when the KYC-before-payout requirement was satisfied by the
+      // dev/test bypass rather than a real verified badge. Never true in
+      // production (`lib/kyc-dev-bypass.ts` refuses there).
+      devBypass: kycDevBypassState().enabled,
+    },
+  });
+
+  // Persist the workflow state on the payout so the hold is visible in the
+  // Compliance queue without reading the audit log.
+  if (payout.screen_risk !== screen.risk) {
+    await updatePayout(payout.id, {
+      screen_risk: screen.risk,
+      screen_codes: screen.codes,
+      screen_list_version: screen.listVersion,
+      screened_at: new Date().toISOString(),
+      // A re-screen that escalates must not inherit a stale clearance.
+      ...(screen.risk !== "CLEAR"
+        ? { cleared_by: null, cleared_at: null, clearance_note: null }
+        : {}),
+    });
+  }
+
+  return screen;
+}
+
+/**
+ * §11.9.2 rule 1 + 4 — a Compliance administrator clears a payout that was
+ * held for review, recording an attributable rationale. This does NOT pay the
+ * payout; it releases the hold so Finance may settle it.
+ *
+ * Requires `compliance:write`. A `BLOCKED` payout can never be cleared this
+ * way — the underlying cause (identity not verified / sanctions hit) has to be
+ * resolved first.
+ */
+export async function clearPayoutForPaymentAction(formData: FormData) {
+  const admin = await requireAdmin("compliance:write");
+  const payoutId = String(formData.get("payoutId") || "");
+  const note = String(formData.get("note") || "").trim();
+  if (!payoutId) throw new Error("Payout ID is required");
+  if (note.length < 10) {
+    throw new Error(
+      "Record a clearance rationale of at least 10 characters — the decision must be attributable."
+    );
+  }
+
+  const payout = await getPayoutById(payoutId);
+  if (!payout) throw new Error("Payout request not found");
+  if (payout.status !== "PENDING") {
+    throw new Error("Only pending withdrawal requests can be cleared.");
+  }
+
+  // Re-screen at clearance time: the member's KYC state or the lists may have
+  // changed since the hold was raised.
+  const screen = await screenPayoutForSettlement(payout, admin);
+  if (screen.risk === "BLOCKED") {
+    throw new Error(
+      `This payout cannot be cleared — it is blocked: ${screen.reasons.join(" ")}`
+    );
+  }
+
+  await updatePayout(payoutId, {
+    cleared_by: admin.user.id,
+    cleared_at: new Date().toISOString(),
+    clearance_note: note,
+  });
+
+  await recordAuditLog({
+    adminId: admin.user.id,
+    action: AUDIT_ACTIONS.PAYOUT_COMPLIANCE_CLEARED,
+    entity: "PAYOUT",
+    entityId: payoutId,
+    details: {
+      recipientId: payout.recipient_id,
+      amount: Number(payout.net_amount),
+      clearedBy: admin.user.email,
+      note,
+      listVersion: screen.listVersion,
+      screenRisk: screen.risk,
+      screenCodes: screen.codes,
+    },
+  });
+
+  await notify({
+    userId: payout.recipient_id,
+    type: "PAYOUT_REQUESTED",
+    title: "Withdrawal cleared for payment",
+    body: "Your withdrawal request has passed compliance review and will be paid shortly.",
+    data: { payoutId },
+  });
+
+  revalidatePath("/admin/transactions");
+  revalidatePath("/dashboard/wallet");
+}
+
 /**
  * Mark a pending member withdrawal request as PAID. The member's wallet is
  * debited here (a `WITHDRAWAL` transaction + a `wallet → external:payout`
@@ -144,6 +303,37 @@ export async function markPayoutPaidAction(formData: FormData) {
 
   const member = await getUserById(payout.recipient_id);
   if (!member) throw new Error("Member not found for this payout");
+
+  // ── §11.9.2 AML / KYC-before-payout gate ────────────────────────────────
+  // Runs BEFORE any ledger movement. A BLOCKED screen (unverified identity or a
+  // sanctions hit) can never be overridden here; a REVIEW hold needs an
+  // attributable Compliance clearance recorded on the payout in a prior step.
+  const screen = await screenPayoutForSettlement(payout, admin);
+  if (screen.risk !== "CLEAR") {
+    const clearance = canSettlePayout(screen, isCleared(payout));
+    if (!clearance.allowed) {
+      await recordAuditLog({
+        adminId: admin.user.id,
+        action: AUDIT_ACTIONS.PAYOUT_SCREEN_BLOCKED,
+        entity: "PAYOUT",
+        entityId: payoutId,
+        details: {
+          recipientId: payout.recipient_id,
+          amount: Number(payout.net_amount),
+          risk: screen.risk,
+          codes: screen.codes,
+          reasons: screen.reasons,
+          listVersion: screen.listVersion,
+          providerConfigured: screen.providerConfigured,
+          attemptedBy: admin.user.email,
+        },
+      });
+      throw new Error(
+        `Payout held — ${screen.risk === "BLOCKED" ? "blocked" : "compliance review required"}. ` +
+          `${clearance.reason ?? ""} ${screen.reasons.join(" ")}`.trim()
+      );
+    }
+  }
 
   // Affordability: the wallet must cover the withdrawal at settlement time.
   const balance = await getWalletBalance(payout.recipient_id);
@@ -226,6 +416,29 @@ export async function moderateOpportunityAction(formData: FormData) {
     throw new Error(
       "This opportunity was cancelled and its posting deposit was refunded. It cannot be re-approved — ask the Seeker to post a new opportunity."
     );
+  }
+
+  // §11.9.1 rule 2 — admin "Approve" is an alternative entry point to going
+  // live, so it must enforce the same server-side deny-list. Refuse BEFORE
+  // chargePostingDeposit so a blocked listing never pays a deposit.
+  if (newStatus === "ACTIVE") {
+    const decision = checkCategoryPostable(opp.category);
+    if (!decision.allowed) {
+      await recordAuditLog({
+        adminId: admin.user.id,
+        action: AUDIT_ACTIONS.OPPORTUNITY_CATEGORY_BLOCKED,
+        entity: "OPPORTUNITY",
+        entityId: opportunityId,
+        details: {
+          category: opp.category,
+          reason: decision.code,
+          intent: "approve",
+          moderatedBy: admin.user.email,
+          depositCharged: false,
+        },
+      });
+      throw new Error(decision.message);
+    }
   }
 
   // Approving an opportunity that has NOT yet paid its posting deposit (e.g. a

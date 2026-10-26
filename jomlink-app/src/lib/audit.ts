@@ -24,9 +24,16 @@ export const AUDIT_ACTIONS = {
   OPPORTUNITY_FLAGGED: "OPPORTUNITY_FLAGGED",
   OPPORTUNITY_REJECTED: "OPPORTUNITY_REJECTED",
   OPPORTUNITY_RESTRICTED_TOGGLED: "OPPORTUNITY_RESTRICTED_TOGGLED",
+  // §11.9.1 — a post/publish/edit/approve was refused because the category is
+  // on the compliance deny-list. Written with a null admin_id when the actor is
+  // a member, so every refused attempt is still attributable.
+  OPPORTUNITY_CATEGORY_BLOCKED: "OPPORTUNITY_CATEGORY_BLOCKED",
   // KYC & Relationships
   KYC_APPROVED: "KYC_APPROVED",
   KYC_REJECTED: "KYC_REJECTED",
+  // Dev/test only: the member self-verified through the KYC bypass. Never
+  // reachable in production (see lib/kyc-dev-bypass.ts).
+  KYC_DEV_VERIFIED: "KYC_DEV_VERIFIED",
   RELATIONSHIP_VERIFIED: "RELATIONSHIP_VERIFIED",
   RELATIONSHIP_REJECTED: "RELATIONSHIP_REJECTED",
   // Disputes
@@ -38,6 +45,16 @@ export const AUDIT_ACTIONS = {
   PAYOUT_RELEASED: "PAYOUT_RELEASED",
   PAYOUT_REQUESTED: "PAYOUT_REQUESTED",
   PAYOUT_PAID: "PAYOUT_PAID",
+  // §11.9.2 — AML / sanctions / PEP screening on money-out. Every screen is
+  // written whether or not it results in a payment, so the record is
+  // attributable (party, list version, result, reviewer, timestamp).
+  PAYOUT_SCREEN_RECORDED: "PAYOUT_SCREEN_RECORDED",
+  PAYOUT_SCREEN_BLOCKED: "PAYOUT_SCREEN_BLOCKED",
+  PAYOUT_COMPLIANCE_CLEARED: "PAYOUT_COMPLIANCE_CLEARED",
+  PAYOUT_REQUEST_DECLINED: "PAYOUT_REQUEST_DECLINED",
+  CLAWBACK_OPENED: "CLAWBACK_OPENED",
+  CLAWBACK_RECOVERED: "CLAWBACK_RECOVERED",
+  CLAWBACK_CLOSED: "CLAWBACK_CLOSED",
 } as const;
 
 /**

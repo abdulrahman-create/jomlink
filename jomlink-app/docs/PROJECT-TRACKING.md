@@ -1,6 +1,6 @@
 # Jomlink — Project Tracking Board
 
-**Updated:** 2026-10-26 · **Build status:** ✅ `npm run build` passes (44 routes) · `npx tsc --noEmit` passes · `eslint` clean (0/0) · `npm test` 88 passing
+**Updated:** 2026-10-26 · **Build status:** ✅ `npm run build` passes (44 routes) · `npx tsc --noEmit` passes · `eslint` clean (0/0) · `npm test` **153 passing / 11 files**
 
 Single-page status view. Narrative detail lives in `00-project-plan.md` and the
 per-phase docs; this file answers *"where are we, what's next, what's blocking"*
@@ -39,7 +39,7 @@ at a glance. For a reverse-chronological *"what happened when"*, see
 | 12 | Lifecycle guards + notification deep-links + money path | ✅ Done | `phase-12-lifecycle-guards-and-money-path.md` |
 | 13 | Appointment notifications + track records + deadline warnings | ✅ Done | `phase-13-appointments-and-deadline-warnings.md` |
 | 14 | Verification-gated escrow release | ✅ Done  | `phase-14-verification-gated-release.md` |
-| 15 | Compliance hardening (category deny-list, AML/KYC-before-payout, biometric purge) | 🔵 Planned | `phase-15-compliance-hardening.md` |
+| 15 | Compliance hardening (category deny-list, AML/KYC-before-payout, biometric purge) | 🚧 In progress — §11.9.1 deny-list ✅ Built 2026-10-26; §11.9.2 AML/KYC gate ✅ Built 2026-10-26 (no provider yet); biometric purge + training consent outstanding | `phase-15-compliance-hardening.md` |
 
 **MVP is feature-complete.** Remaining work is production hardening (below).
 
@@ -53,6 +53,28 @@ at a glance. For a reverse-chronological *"what happened when"*, see
 > code; payouts have **no AML/KYC gate**; and the biometric **purge job is missing**. The
 > blueprint was updated to **v1.2** to mandate server-side category deny-list (§11.9.1) and
 > AML/sanctions screening (§11.9.2). **Phase 15** is the implementation plan.
+>
+> ✅ **Update 2026-10-26 — §11.9.1 category deny-list BUILT** (LEG-02/03/06, BUG-009).
+> `GOVERNMENT_PUBLIC_SECTOR` **and** `INVESTOR_CONNECTION` are now refused server-side
+> with default-deny (`lib/category-policy.ts`) at create / publish / edit / admin-approve,
+> **before** the posting deposit is charged, and are no longer offered in the post form,
+> edit form or marketplace filter. Every refusal is audited
+> (`OPPORTUNITY_CATEGORY_BLOCKED`). Still open: §11.9.1 rule 4 — enablement as a
+> **versioned, DB-backed Compliance decision** (risk owner, approver, expiry).
+>
+> ✅ **Update 2026-10-26 — §11.9.2 AML / KYC-before-payout BUILT** (LEG-04/05, BUG-010).
+> `lib/screening.ts` screens **before any ledger movement**: an unverified recipient or a
+> sanctions/PEP hit is `BLOCKED` and never overridable; single-transaction (RM 10,000),
+> cumulative (RM 25,000 / 30 days) and rapid top-up-then-withdraw signals are a `REVIEW`
+> hold a **Compliance** admin must clear with a written rationale. Withdrawals are refused
+> at request time for unverified members, and every screen is recorded
+> (`PAYOUT_SCREEN_RECORDED` / `PAYOUT_SCREEN_BLOCKED` / `PAYOUT_COMPLIANCE_CLEARED`).
+> Still open: **no sanctions provider** is integrated — the screen uses a local deny-list
+> and records `providerConfigured: false`. Migration
+> `supabase/phase-15-aml-screening.sql` **needs applying**.
+>
+> The **biometric purge job** and **separate training consent** (§11.11) remain unbuilt.
+> `npm test` **153 passing / 11 files**.
 
 > ⚠️ **Phase 12 left one data issue unresolved by design** — a stale **RM 2,200
 > escrow on an RM 1,500 opportunity**, on a `COMPLETED` connection, created before

@@ -48,6 +48,12 @@ export const accounts = {
   externalFunding: "external:funding",
   platformActivation: "platform:activation",
   platformService: "platform:service",
+  /**
+   * Recovered clawback funds (§5.12.1, §11.7). Kept as its own account so a
+   * recovery is never confused with service-fee income and can be reconciled
+   * against the original payout.
+   */
+  platformClawback: "platform:clawback",
 } as const;
 
 /** Human label for an account (for the wallet UI). */
@@ -59,5 +65,6 @@ export function accountLabel(account: string): string {
   if (account === accounts.externalFunding) return "External funding source";
   if (account === accounts.platformActivation) return "Platform · activation fees";
   if (account === accounts.platformService) return "Platform · service fees";
+  if (account === accounts.platformClawback) return "Platform · clawback recoveries";
   return account;
 }

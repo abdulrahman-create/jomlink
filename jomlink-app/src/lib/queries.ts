@@ -1,6 +1,7 @@
 import { getServiceRoleClient } from "@/lib/supabase/admin";
 import { JOMLINK_APP_TAG } from "@/lib/data";
 import type { UntypedSchemaClient } from "@/lib/data";
+import { isKycDevBypassEnabled } from "@/lib/kyc-dev-bypass";
 import type {
   JomlinkUserRow,
   MemberProfileRow,
@@ -28,6 +29,7 @@ import type {
   ProgressReportRow,
   ProgressReportCommentRow,
   ProgressReportCommentRevisionRow,
+  ClawbackRow,
   LinkerFlagRow,
   ConnectionExtensionRow,
 } from "@/lib/jomlink-types";
@@ -350,6 +352,101 @@ export async function getMemberReputation(
     .maybeSingle();
   if (error) throw error;
   return (data as { user_id: string; success_rate: number | null; average_rating: number | null } | null) ?? null;
+}
+
+// ── AML / KYC-before-payout helpers (§11.9.2) ────────────────
+
+/**
+ * Is this member's identity verified for money-out purposes?
+ *
+ * §11.9.2 rule 2: "A member may not receive a payout until identity
+ * verification ... is complete. Email+mobile verification alone is not
+ * sufficient for money-out." The platform's single identity signal is the
+ * verified badge on `member_profiles`, so that is what gates money-out.
+ * Fails closed: a missing profile row is NOT verified.
+ *
+ * This function is deliberately bypass-free so tests, admin tooling and
+ * future callers can always ask the *real* question. The dev/test escape hatch
+ * lives in `isKycSatisfiedForPayout()` below.
+ */
+export async function isMemberVerifiedForPayout(
+  userId: string
+): Promise<boolean> {
+  const profile = await getProfileByUserId(userId);
+  if (!profile) return false;
+  return (
+    profile.verified_badge === true &&
+    (profile.verification_status ?? "").toUpperCase() === "VERIFIED"
+  );
+}
+
+/**
+ * Does the KYC-before-payout requirement count as satisfied for this member?
+ *
+ * Returns `true` when either:
+ *   • the member's identity is really verified, **or**
+ *   • the **dev/test bypass** is active (`KYC_DEV_BYPASS=true` outside
+ *     production) — see `lib/kyc-dev-bypass.ts`.
+ *
+ * The bypass can never be active in production, so this is safe to use as the
+ * single call-site gate. Use `isMemberVerifiedForPayout()` alone when you need
+ * the unbypassable truth (e.g. an admin report of who is actually verified).
+ */
+export async function isKycSatisfiedForPayout(userId: string): Promise<boolean> {
+  if (await isMemberVerifiedForPayout(userId)) return true;
+  return isKycDevBypassEnabled();
+}
+
+/**
+ * Total already paid out to a member inside the rolling AML window (§11.9.2
+ * rule 3, cumulative / structuring threshold). Counts settled bank withdrawals
+ * only — a PENDING request is not yet money out.
+ */
+export async function sumPayoutsInWindow(
+  userId: string,
+  windowDays: number
+): Promise<number> {
+  const since = new Date(
+    Date.now() - windowDays * 24 * 60 * 60 * 1000
+  ).toISOString();
+  const { data, error } = await sc()
+    .from("payouts")
+    .select("net_amount, status, method, released_at, created_at")
+    .eq("recipient_id", userId)
+    .eq("status", "PAID");
+  if (error) throw error;
+  return (
+    data as {
+      net_amount: number | string | null;
+      released_at: string | null;
+      created_at: string;
+    }[]
+  )
+    .filter((p) => {
+      const at = p.released_at ?? p.created_at;
+      return !!at && at >= since;
+    })
+    .reduce((sum, p) => sum + Number(p.net_amount || 0), 0);
+}
+
+/**
+ * Timestamp of the member's most recent settled wallet top-up, for the rapid
+ * top-up-then-withdraw signal (§11.9.2 rule 3).
+ */
+export async function lastWalletTopUpAt(
+  userId: string
+): Promise<string | null> {
+  const { data, error } = await sc()
+    .from("transactions")
+    .select("created_at")
+    .eq("user_id", userId)
+    .eq("type", "WALLET_CREDIT")
+    .eq("status", "COMPLETED")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as { created_at: string } | null)?.created_at ?? null;
 }
 
 // ── Opportunities (Phase 3) ─────────────────────────────────
@@ -1507,6 +1604,98 @@ export async function getRevisionsByComment(
     .order("revision_number", { ascending: true });
   if (error) throw error;
   return (data as ProgressReportCommentRevisionRow[]) ?? [];
+}
+
+// ── Clawbacks (§5.12.1, §11.7) ──────────────────────────────────────────────
+//
+// A clawback is a RECOVERY WORKFLOW, not a silent reversal: the row records
+// what was decided, what was actually recovered, and what is still outstanding.
+
+export async function createClawback(
+  values: Record<string, unknown>
+): Promise<ClawbackRow> {
+  const { data, error } = await sc()
+    .from("clawbacks")
+    .insert(values)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data as ClawbackRow;
+}
+
+export async function getClawbackById(id: string): Promise<ClawbackRow | null> {
+  const { data, error } = await sc()
+    .from("clawbacks")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as ClawbackRow) ?? null;
+}
+
+export async function updateClawback(
+  id: string,
+  patch: Record<string, unknown>
+): Promise<ClawbackRow> {
+  const { data, error } = await sc()
+    .from("clawbacks")
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data as ClawbackRow;
+}
+
+export async function getClawbacksByConnection(
+  connectionId: string
+): Promise<ClawbackRow[]> {
+  const { data, error } = await sc()
+    .from("clawbacks")
+    .select("*")
+    .eq("connection_id", connectionId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as ClawbackRow[];
+}
+
+/**
+ * Every clawback still short of full recovery. These need a human: the wallet
+ * could not cover the amount, so the remainder is a receivable, not a write-off
+ * (§11.7 — route unrecoverable balances to manual review).
+ */
+export async function listOpenClawbacksAdmin(): Promise<ClawbackRow[]> {
+  const { data, error } = await sc()
+    .from("clawbacks")
+    .select("*")
+    .in("status", ["PENDING", "PARTIAL"])
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  const rows = (data ?? []) as ClawbackRow[];
+  if (rows.length === 0) return rows;
+
+  // `clawbacks.linker_id` has a real FK to users, but go through the shared
+  // helper so the admin list renders names exactly like every other table.
+  const names = await resolveUserNames(rows.map((r) => r.linker_id));
+  return rows.map((r) => ({
+    ...r,
+    linker_name: names.get(r.linker_id)?.full_name ?? null,
+  }));
+}
+
+/** The payout row whose net amount caps how much may be clawed back. */
+export async function getReleasedPayoutForConnection(
+  connectionId: string
+): Promise<PayoutRow | null> {
+  const { data, error } = await sc()
+    .from("payouts")
+    .select("*")
+    .eq("connection_id", connectionId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as PayoutRow) ?? null;
 }
 
 export async function getActiveFlagByConnection(

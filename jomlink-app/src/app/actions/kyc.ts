@@ -10,8 +10,12 @@ import {
   createKycBiometric,
   getKycBiometricsByUser,
   setBiometricConsent,
+  isMemberVerifiedForPayout,
+  upsertProfile,
 } from "@/lib/queries";
 import { BIOMETRIC_CONSENT_VERSION } from "@/lib/constants";
+import { kycDevBypassState } from "@/lib/kyc-dev-bypass";
+import { recordAuditLog, AUDIT_ACTIONS } from "@/lib/audit";
 
 // ── Validation ──────────────────────────────────────────────
 const KYC_BUCKET = "kyc-documents";
@@ -38,6 +42,65 @@ const KycSchema = z.object({
 });
 
 export type KycState = { error?: string; success?: boolean };
+
+/**
+ * DEV / TEST ONLY — mark the current member as identity-verified without
+ * uploading a document or waiting for admin review.
+ *
+ * Use case: exercising the withdrawal → AML screen → Compliance clearance →
+ * payout flows in dev or QA without hand-approving KYC for every test account.
+ *
+ * Guarding (all enforced here, server-side):
+ *   1. **Refused in production.** Uses the same `kycDevBypassState()` helper as
+ *      the payout gate, which hard-blocks when `NODE_ENV === "production"` — a
+ *      stray `KYC_DEV_BYPASS=true` in a production `.env` cannot reach this.
+ *   2. **Opt-in only.** Outside production it additionally requires
+ *      `KYC_DEV_BYPASS=true`, so a normal dev session behaves like production.
+ *   3. **Audited.** Writes `KYC_DEV_VERIFIED` with the actor, the previous
+ *      verification state and the environment, so a faked badge is never silent.
+ *
+ * It writes the same two fields the admin review flow writes, so nothing about
+ * the rest of the platform needs a special case:
+ *   `member_profiles.verified_badge = true`, `verification_status = "VERIFIED"`.
+ */
+export async function devVerifySelfKycAction(): Promise<void> {
+  const user = await getCurrentUser();
+  if (!user) return;
+
+  const bypass = kycDevBypassState();
+  if (!bypass.enabled) {
+    // Fail closed and say nothing that helps an attacker in production.
+    console.error(
+      `devVerifySelfKycAction refused (${bypass.reason}) for user ${user.id}`
+    );
+    return;
+  }
+
+  const before = await isMemberVerifiedForPayout(user.id);
+
+  await upsertProfile(user.id, {
+    verified_badge: true,
+    verification_status: "VERIFIED",
+  });
+
+  await recordAuditLog({
+    adminId: null,
+    action: AUDIT_ACTIONS.KYC_DEV_VERIFIED,
+    entity: "USER",
+    entityId: user.id,
+    details: {
+      devBypass: true,
+      previouslyVerified: before,
+      email: user.email,
+      nodeEnv: process.env.NODE_ENV ?? null,
+    },
+  });
+
+  revalidatePath("/dashboard/kyc");
+  revalidatePath("/dashboard/wallet");
+  revalidatePath("/dashboard");
+  revalidatePath("/admin/kyc");
+}
 
 /** Deterministic per-user path so re-submissions overwrite cleanly. */
 function kycObjectPath(userId: string, file: File) {

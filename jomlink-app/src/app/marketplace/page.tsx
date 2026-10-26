@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, MapPin, ShieldAlert, Timer } from "lucide-react";
 import { listActiveOpportunities } from "@/lib/queries";
-import { OPPORTUNITY_CATEGORIES, formatDate } from "@/lib/constants";
+import { PUBLIC_OPPORTUNITY_CATEGORIES, formatDate } from "@/lib/constants";
 import { SiteHeaderWithUser } from "@/components/site-header-with-user";
 import { SiteFooter } from "@/components/site-footer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -78,7 +78,7 @@ export default async function MarketplacePage({
             name="category"
             defaultValue={category}
             placeholder="All categories"
-            options={OPPORTUNITY_CATEGORIES.map((c) => ({ value: c.value, label: c.label }))}
+            options={PUBLIC_OPPORTUNITY_CATEGORIES.map((c) => ({ value: c.value, label: c.label }))}
           />
           <Select
             name="country"

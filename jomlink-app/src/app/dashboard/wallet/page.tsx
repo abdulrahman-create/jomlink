@@ -9,6 +9,7 @@ import {
   getConnectionsByUser,
   getConnectionsForSeeker,
   getUserById,
+  isKycSatisfiedForPayout,
 } from "@/lib/queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -68,13 +69,17 @@ export default async function WalletPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [transactions, payouts, refunds, myConnections, seekerConnections, userRow] = await Promise.all([
+  const [transactions, payouts, refunds, myConnections, seekerConnections, userRow, kycVerified] = await Promise.all([
     getTransactionsByUser(user.id),
     getPayoutsByRecipient(user.id),
     getRefundsByRecipient(user.id),
     getConnectionsByUser(user.id),
     getConnectionsForSeeker(user.id),
     getUserById(user.id),
+    // §11.9.2 rule 2 — money-out requires a verified identity. The
+    // `isKycSatisfiedForPayout` variant also honours the dev/test bypass
+    // (never active in production).
+    isKycSatisfiedForPayout(user.id),
   ]);
 
   // Balance counts SETTLED money only. A top-up is created as PENDING before the
@@ -250,6 +255,7 @@ export default async function WalletPage() {
             bankAccountNo={userRow?.bank_account_no ?? null}
             bankAccountName={userRow?.bank_account_name ?? null}
             pendingRequestAmount={pendingRequestAmount}
+            kycVerified={kycVerified}
           />
         </div>
 

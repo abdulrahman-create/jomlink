@@ -5,25 +5,30 @@ import {
   listAllPayoutsAdmin,
   listAllRefundsAdmin,
   listPendingPayoutRequestsAdmin,
+  listOpenClawbacksAdmin,
 } from "@/lib/queries";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { formatMoney, formatDate } from "@/lib/constants";
+import { formatMoney, formatDate, AML } from "@/lib/constants";
 import { MarkPayoutPaidButton } from "./mark-paid-button";
+import { ClawbackControls } from "./clawback-controls";
+import { ClearPayoutButton } from "./clear-payout-button";
 
 export default async function AdminTransactionsPage({
   searchParams,
 }: {
   searchParams: Promise<{ tab?: string }>;
 }) {
-  await requireAdmin("finance:read");
+  const admin = await requireAdmin("finance:read");
+  const canClear = admin.can("compliance:write");
   const { tab = "transactions" } = await searchParams;
 
-  const [transactions, payouts, refunds, payoutRequests] = await Promise.all([
+  const [transactions, payouts, refunds, payoutRequests, openClawbacks] = await Promise.all([
     listAllTransactionsAdmin(50),
     listAllPayoutsAdmin(50),
     listAllRefundsAdmin(50),
     listPendingPayoutRequestsAdmin(100),
+    listOpenClawbacksAdmin(),
   ]);
 
   return (
@@ -35,6 +40,10 @@ export default async function AdminTransactionsPage({
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Monitor escrow balances, double-entry ledger transactions, linker payouts, and refunds.
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            AML screening (§11.9.2): payouts at or above {formatMoney(AML.PAYOUT_REVIEW_THRESHOLD)} are held for
+            Compliance clearance; identity verification is required for every money-out.
           </p>
         </div>
       </div>
@@ -80,6 +89,16 @@ export default async function AdminTransactionsPage({
           }`}
         >
           Refunds ({refunds.length})
+        </Link>
+        <Link
+          href="/admin/transactions?tab=clawbacks"
+          className={`pb-3 text-sm font-semibold transition-colors border-b-2 px-1 ${
+            tab === "clawbacks"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Clawbacks{openClawbacks.length > 0 ? ` (${openClawbacks.length} open)` : ""}
         </Link>
       </div>
 
@@ -214,6 +233,7 @@ export default async function AdminTransactionsPage({
                   <th className="px-4 py-3">Member</th>
                   <th className="px-4 py-3">Amount</th>
                   <th className="px-4 py-3">Bank Account</th>
+                  <th className="px-4 py-3">Screening</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Action</th>
                 </tr>
@@ -221,7 +241,7 @@ export default async function AdminTransactionsPage({
               <tbody className="divide-y divide-border text-xs">
                 {payoutRequests.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                    <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                       No pending withdrawal requests.
                     </td>
                   </tr>
@@ -257,12 +277,51 @@ export default async function AdminTransactionsPage({
                         )}
                       </td>
                       <td className="px-4 py-3">
+                        {p.cleared_at ? (
+                          <Badge variant="success" className="text-[10px]">
+                            Cleared
+                          </Badge>
+                        ) : p.screen_risk === "BLOCKED" ? (
+                          <Badge variant="destructive" className="text-[10px]">
+                            BLOCKED
+                          </Badge>
+                        ) : p.screen_risk === "REVIEW" ? (
+                          <Badge variant="warning" className="text-[10px]">
+                            REVIEW
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground">
+                            {p.screened_at ? "Clear" : "Screens on payment"}
+                          </span>
+                        )}
+                        {p.screen_codes && p.screen_codes.length > 0 && (
+                          <span className="mt-1 block font-mono text-[10px] text-muted-foreground">
+                            {p.screen_codes.join(", ")}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
                         <Badge variant="warning" className="text-[10px]">
                           {p.status}
                         </Badge>
                       </td>
                       <td className="px-4 py-3">
-                        <MarkPayoutPaidButton payoutId={p.id} />
+                        <div className="flex flex-col gap-2">
+                          {p.screen_risk === "REVIEW" && !p.cleared_at && canClear && (
+                            <ClearPayoutButton payoutId={p.id} />
+                          )}
+                          {p.screen_risk === "REVIEW" && !p.cleared_at && !canClear && (
+                            <span className="text-[11px] text-muted-foreground">
+                              Awaiting Compliance clearance
+                            </span>
+                          )}
+                          {p.screen_risk === "BLOCKED" && (
+                            <span className="text-[11px] text-destructive">
+                              Resolve KYC / sanctions hit first
+                            </span>
+                          )}
+                          <MarkPayoutPaidButton payoutId={p.id} />
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -325,6 +384,88 @@ export default async function AdminTransactionsPage({
             </table>
           </div>
         </Card>
+      )}
+
+      {tab === "clawbacks" && (
+        <div className="space-y-4">
+          <Card className="border-border bg-white shadow-xs p-4">
+            <h2 className="text-sm font-semibold text-foreground">
+              Post-release clawbacks (§5.12.1, §11.7)
+            </h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              A clawback recovers a reward that was already released, inside the
+              7-day window after payout. It only ever recovers what the Linker&apos;s
+              wallet can actually cover — any shortfall is recorded as outstanding
+              and routed to manual review. It is never treated as complete until the
+              full amount is back.
+            </p>
+          </Card>
+
+          <Card className="border-border bg-white shadow-xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="border-b border-border bg-slate-50/75 text-xs text-muted-foreground uppercase font-semibold">
+                  <tr>
+                    <th className="px-4 py-3">Decided</th>
+                    <th className="px-4 py-3">Linker</th>
+                    <th className="px-4 py-3">Target</th>
+                    <th className="px-4 py-3">Recovered</th>
+                    <th className="px-4 py-3">Outstanding</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Reason</th>
+                    <th className="px-4 py-3">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border text-xs">
+                  {openClawbacks.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+                        No open clawbacks. Open one from a released connection&apos;s
+                        detail page.
+                      </td>
+                    </tr>
+                  ) : (
+                    openClawbacks.map((c) => (
+                      <tr key={c.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                          {formatDate(c.decided_at)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="font-semibold text-foreground">
+                            {c.linker_name || "Linker"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 font-mono font-bold text-foreground">
+                          {formatMoney(c.amount, "MYR")}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-emerald-700">
+                          {formatMoney(c.amount_recovered, "MYR")}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-rose-700">
+                          {formatMoney(c.amount_outstanding, "MYR")}
+                        </td>
+                        <td className="px-4 py-3">
+                          <Badge
+                            variant={c.status === "RECOVERED" ? "success" : "warning"}
+                            className="text-[10px]"
+                          >
+                            {c.status}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3 max-w-[16rem] truncate text-muted-foreground">
+                          {c.reason}
+                        </td>
+                        <td className="px-4 py-3">
+                          <ClawbackControls clawbackId={c.id} />
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
       )}
     </div>
   );

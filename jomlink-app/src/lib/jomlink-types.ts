@@ -188,6 +188,16 @@ export interface PayoutRow {
   approved_by: string | null;
   note: string | null;
   created_at: string;
+  // ── AML / sanctions screening state (§11.9.2) ──────────────────────────
+  // Verdict of the last screen: CLEAR | REVIEW | BLOCKED. A REVIEW hold must be
+  // cleared by a Compliance admin (`cleared_by`) before settlement.
+  screen_risk?: string | null;
+  screen_codes?: string[] | null;
+  screen_list_version?: string | null;
+  screened_at?: string | null;
+  cleared_by?: string | null;
+  cleared_at?: string | null;
+  clearance_note?: string | null;
 }
 
 export interface RefundRow {
@@ -478,12 +488,47 @@ export interface DisputeRow {
   description: string | null;
   evidence: string | null;
   status: "OPEN" | "UNDER_REVIEW" | "RESOLVED" | "CLOSED";
-  outcome: "COMPLETED" | "PARTIALLY_COMPLETED" | "FAILED" | "REFUNDED" | "OTHER" | null;
+  outcome: "COMPLETED" | "PARTIALLY_COMPLETED" | "FAILED" | "REFUNDED" | "OTHER" | "CLAWBACK" | null;
   resolution_note: string | null;
   resolved_by: string | null;
   resolved_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * Post-release clawback recovery record (§5.12.1, §11.7).
+ *
+ * `amount_recovered + amount_outstanding = amount` always. A clawback is only
+ * RECOVERED when the full amount has actually been recovered — never because a
+ * status was flipped.
+ */
+export type ClawbackStatus = "PENDING" | "PARTIAL" | "RECOVERED" | "CANCELLED";
+
+export interface ClawbackRow {
+  id: string;
+  connection_id: string;
+  opportunity_id: string;
+  dispute_id: string | null;
+  linker_id: string;
+  amount: number;
+  reason: string;
+  decided_by: string;
+  decided_at: string;
+  amount_recovered: number;
+  amount_outstanding: number;
+  status: ClawbackStatus;
+  recovery_method: "WALLET_DEBIT" | "MANUAL_TRANSFER" | "NONE" | null;
+  provider_ref: string | null;
+  provider_response: string | null;
+  requires_manual_review: boolean;
+  review_note: string | null;
+  original_payout_id: string | null;
+  recovery_transaction_id: string | null;
+  created_at: string;
+  updated_at: string;
+  /** Present when the query joins the member. */
+  linker_name?: string | null;
 }
 
 export interface AuditLogRow {

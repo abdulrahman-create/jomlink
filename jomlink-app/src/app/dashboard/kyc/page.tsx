@@ -2,10 +2,12 @@ import { getCurrentUser } from "@/lib/auth";
 import { getKycRecordsByUser, getKycBiometricsByUser } from "@/lib/queries";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ShieldCheck, Clock, CheckCircle2, XCircle, ScanFace } from "lucide-react";
+import { ShieldCheck, Clock, CheckCircle2, XCircle, ScanFace, FlaskConical } from "lucide-react";
 import { formatDate } from "@/lib/constants";
+import { kycDevBypassNotice, kycDevBypassState } from "@/lib/kyc-dev-bypass";
 import { KycForm } from "./kyc-form";
 import { BiometricKycForm } from "./biometric-form";
+import { DevVerifyButton } from "./dev-verify-button";
 
 export const metadata = { title: "Identity Verification" };
 
@@ -26,6 +28,8 @@ export default async function KycPage() {
   const biometrics = await getKycBiometricsByUser(user.id);
   const latest = records[0] ?? null;
   const isVerified = user.profile?.verifiedBadge === true;
+  // Dev/test only. `enabled` is false in production by construction.
+  const devBypass = kycDevBypassState();
 
   return (
     <div className="space-y-6">
@@ -40,6 +44,34 @@ export default async function KycPage() {
           {isVerified ? "Verified" : user.profile?.verificationStatus ?? "UNVERIFIED"}
         </Badge>
       </div>
+
+      {/* DEV / TEST ONLY — one-click verification. Hidden unless the server has
+          already confirmed the bypass is available (never in production). */}
+      {devBypass.enabled && !isVerified && (
+        <Card className="border-warning/40 bg-warning/5">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg text-warning">
+              <FlaskConical className="h-5 w-5" aria-hidden="true" />
+              Dev / test mode
+            </CardTitle>
+            <CardDescription>
+              {kycDevBypassNotice()}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Mark this account verified immediately so you can test withdrawals,
+              payout settlement, the AML review threshold and Compliance
+              clearance without an admin approving a document. Every use is
+              recorded in the audit log as <code>KYC_DEV_VERIFIED</code>.
+            </p>
+            <DevVerifyButton />
+            <p className="text-xs text-muted-foreground">
+              To remove the escape hatch entirely, unset <code>KYC_DEV_BYPASS</code>.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Current status */}
       <Card>

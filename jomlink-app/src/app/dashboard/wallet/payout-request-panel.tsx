@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import { useActionState } from "react";
-import { Banknote, Loader2, Landmark, CheckCircle2 } from "lucide-react";
+import { Banknote, Loader2, Landmark, CheckCircle2, ShieldAlert } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,12 +36,15 @@ export function PayoutRequestPanel({
   bankAccountNo,
   bankAccountName,
   pendingRequestAmount,
+  kycVerified,
 }: {
   balance: number;
   bankName: string | null;
   bankAccountNo: string | null;
   bankAccountName: string | null;
   pendingRequestAmount: number | null;
+  /** §11.9.2 rule 2 — money-out requires a verified identity. */
+  kycVerified: boolean;
 }) {
   const [bankState, bankAction, bankPending] = useActionState<
     PayoutState,
@@ -139,6 +143,19 @@ export function PayoutRequestPanel({
               Available to withdraw: <strong>{money(balance)}</strong>. An
               administrator will transfer the amount to your bank account.
             </p>
+            {!kycVerified && (
+              <div className="flex items-start gap-2 rounded-md bg-warning/15 px-3 py-2 text-xs text-warning">
+                <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span>
+                  Identity verification is required before you can withdraw.
+                  Submit your document under{" "}
+                  <Link href="/dashboard/kyc" className="font-semibold underline">
+                    Verification
+                  </Link>{" "}
+                  and wait for approval.
+                </span>
+              </div>
+            )}
             {hasPending ? (
               <p className="flex items-center gap-1.5 rounded-md bg-warning-bg px-3 py-2 text-xs text-warning">
                 <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
@@ -167,7 +184,7 @@ export function PayoutRequestPanel({
                 <Button
                   type="submit"
                   size="sm"
-                  disabled={payPending || !hasBank || balance <= 0}
+                  disabled={payPending || !hasBank || !kycVerified || balance <= 0}
                 >
                   {payPending ? (
                     <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />

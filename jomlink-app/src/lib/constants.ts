@@ -78,6 +78,56 @@ export const WALLET = {
 } as const;
 
 /**
+ * Anti-money-laundering controls (blueprint v1.2 §11.9.2, AMLATFA 2001).
+ *
+ * §11.9.2 requires four enforced controls, not advisory ones:
+ *   1. a sanctions / PEP / adverse-media screen before any payout settles,
+ *      with a `BLOCKED` result halting settlement and routing to Compliance;
+ *   2. **KYC-before-payout** — no money-out for an unverified member
+ *      ("email + mobile verification alone is not sufficient");
+ *   3. defined per-user / per-transaction monitoring thresholds, alerting
+ *      Compliance on structuring and rapid top-up-then-withdraw flows;
+ *   4. every screen recorded and attributable (party, list version, result,
+ *      reviewer, timestamp) as an immutable audit event.
+ *
+ * Enforcement lives in `src/lib/screening.ts` (pure) and the payout actions.
+ */
+export const AML = {
+  /**
+   * Single payout/withdrawal threshold (MYR). At or above this the payout is
+   * HELD for Compliance approval and an immutable screening event is written
+   * before any money moves. Below it the screen still runs and is still
+   * recorded — the threshold only changes whether a human must approve.
+   */
+  PAYOUT_REVIEW_THRESHOLD: 10000,
+  /**
+   * Cumulative payout threshold (MYR) over the rolling window below. Breaching
+   * it escalates a payout to Compliance review even when the individual
+   * transaction is small (structuring / smurfing detection).
+   */
+  CUMULATIVE_PAYOUT_THRESHOLD: 25000,
+  /** Rolling window for the cumulative threshold, in days. */
+  CUMULATIVE_WINDOW_DAYS: 30,
+  /**
+   * Rapid top-up-then-withdraw window, in hours. Withdrawing a balance that was
+   * funded this recently is a first-party / layering signal and raises the
+   * payout to Compliance review.
+   */
+  RAPID_TOPUP_WINDOW_HOURS: 24,
+  /**
+   * AML programme screening-list version. Bump whenever the underlying list or
+   * provider definition changes, so every recorded screen states which version
+   * produced the result (§11.9.2 rule 4).
+   *
+   * NOTE: the platform does not yet integrate a sanctions/PEP provider
+   * (see §11.9.2 rule 5). Until it does, `screening.ts` applies a *local*
+   * deny-list only and every screen is recorded as `PROVIDER_NOT_CONFIGURED`
+   * so the gap is visible in the audit trail rather than silently "clean".
+   */
+  LIST_VERSION: "local-denylist-2026.10",
+} as const;
+
+/**
  * KYC biometric consent wording version. Bump this whenever the consent copy
  * changes so we retain which wording each member agreed to (see docs).
  */
@@ -104,23 +154,46 @@ export const OPPORTUNITY_CATEGORIES = [
 ] as const;
 
 /**
- * Categories that must not be advertised as browsable on PUBLIC surfaces
- * (landing page, marketing copy).
+ * Categories that are NOT enabled for posting — the server-side deny-list.
  *
- * Blueprint v1.2 §11.9.1 classifies these as regulated / high-risk and requires
- * them to be disabled by default; §11.9.1 rule 5 adds that "disabled" must not
- * be presented as a normal product. Phase 15 adds the server-side deny-list;
- * until then this list keeps the marketing surface honest and is the correct
- * place for the eventual deny-list to read from.
+ * Blueprint v1.2 §11.9.1 (launch blocker, risk register LEG-02/03/06) requires
+ * regulated and high-risk categories to be **disabled by default** and rejected
+ * at every entry point, not merely flagged:
+ *
+ *   GOVERNMENT_PUBLIC_SECTOR  → bribery / procurement exposure (MACC Act 2009)
+ *   INVESTOR_CONNECTION       → unlicensed investment activity (SC Malaysia)
+ *
+ * Default-deny is implemented in `src/lib/category-policy.ts`: a category is
+ * postable ONLY if it is present in `OPPORTUNITY_CATEGORIES` AND absent from
+ * this list, so a new enum value can never become live by accident.
+ *
+ * Re-enabling a category is an audited Compliance decision (§11.9.1 rule 4): it
+ * must record a risk owner, written legal review, rationale and expiry date, and
+ * emit an audit event. Remove it from this list only as part of that decision.
+ *
+ * Keep this list in sync with the deny-list assertions in
+ * `src/lib/category-policy.test.ts`.
  */
-export const NON_PUBLIC_CATEGORY_VALUES = [
+export const DISABLED_CATEGORY_VALUES = [
   "GOVERNMENT_PUBLIC_SECTOR",
   "INVESTOR_CONNECTION",
 ] as const;
 
-/** Opportunity categories that may be promoted on public, unauthenticated pages. */
+/**
+ * Back-compat alias for the public-surface filter below. The deny-list is the
+ * single source of truth — public promotion and server-side posting now read the
+ * same list so marketing can never advertise a category the API would reject.
+ */
+export const NON_PUBLIC_CATEGORY_VALUES = DISABLED_CATEGORY_VALUES;
+
+/**
+ * Opportunity categories that may be offered as selectable / promoted on public
+ * and member-facing surfaces (post form, edit form, marketplace filter, landing
+ * page). Derived from the deny-list so the UI can never surface a category the
+ * server will reject (§11.9.1 rule 3).
+ */
 export const PUBLIC_OPPORTUNITY_CATEGORIES = OPPORTUNITY_CATEGORIES.filter(
-  (c) => !(NON_PUBLIC_CATEGORY_VALUES as readonly string[]).includes(c.value)
+  (c) => !(DISABLED_CATEGORY_VALUES as readonly string[]).includes(c.value)
 );
 
 /** Relationship categories for relationship declarations. */

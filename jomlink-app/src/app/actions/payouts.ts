@@ -10,6 +10,7 @@ import {
   getPayoutsByRecipient,
   createPayout,
   createTransaction,
+  isKycSatisfiedForPayout,
 } from "@/lib/queries";
 import { recordAuditLog, AUDIT_ACTIONS } from "@/lib/audit";
 import { notify } from "@/lib/notify";
@@ -102,6 +103,34 @@ export async function requestPayoutAction(
     return {
       error:
         "Add your bank account details first — an administrator needs them to transfer the payout.",
+    };
+  }
+
+  // §11.9.2 rule 2 — KYC-before-payout. Identity verification is a hard
+  // precondition for money-out, so refuse the REQUEST up front instead of
+  // queuing work that the settlement screen would only block later. The
+  // authoritative check still runs at settlement (`markPayoutPaidAction`);
+  // this is the member-facing early warning.
+  //
+  // `isKycSatisfiedForPayout` honours the dev/test bypass
+  // (`KYC_DEV_BYPASS=true`), which is impossible to enable in production.
+  if (!(await isKycSatisfiedForPayout(user.id))) {
+    await recordAuditLog({
+      adminId: null,
+      action: AUDIT_ACTIONS.PAYOUT_SCREEN_BLOCKED,
+      entity: "USER",
+      entityId: user.id,
+      details: {
+        stage: "request",
+        code: "KYC_NOT_VERIFIED",
+        userId: user.id,
+        email: user.email,
+        amount,
+      },
+    });
+    return {
+      error:
+        "Verify your identity before withdrawing. Payouts require a verified account — submit your identity document under Verification and wait for approval.",
     };
   }
 

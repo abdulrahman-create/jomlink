@@ -14,12 +14,18 @@ import {
   getActiveFlagByConnection,
   getProgressReportsByConnection,
   getOpenExtensionByConnection,
+  getReleasedPayoutForConnection,
+  getClawbacksByConnection,
+  getWalletBalance,
 } from "@/lib/queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatDate, formatMYR, FEES } from "@/lib/constants";
 import { computeFunding } from "@/lib/funding";
 import { isConnectionOpen } from "@/lib/status";
+import { isWithinClawbackWindow } from "@/lib/clawback";
+import { getCurrentAdmin } from "@/lib/rbac";
+import { OpenClawbackForm } from "./open-clawback-form";
 import { deadlineProximity, daysUntil } from "@/lib/deadline-warnings";
 import type { AppointmentRow, ConnectionEvidenceRow, ReviewRow, OpportunityDeadlineRow, LinkerFlagRow, ProgressReportRow } from "@/lib/jomlink-types";
 import {
@@ -140,6 +146,28 @@ export default async function ConnectionDetailPage({
   const failed = conn.status === "FAILED";
   const releaseDate = conn.auto_release_at ? formatDate(conn.auto_release_at) : null;
 
+  // ── Post-release clawback (§5.12.1, §11.7) — admin only ────────────────────
+  // Only meaningful once money has actually left escrow, and only inside the
+  // 7-day window from that release. The action re-checks all of this.
+  const adminCtx = await getCurrentAdmin();
+  const canClawback = Boolean(adminCtx?.can("finance:payout"));
+  let clawback: { maxAmount: number; walletBalance: number; alreadyOpen: boolean } | null =
+    null;
+  if (canClawback && released) {
+    const payout = await getReleasedPayoutForConnection(conn.id);
+    const existing = await getClawbacksByConnection(conn.id);
+    const releasedAt = payout?.released_at ?? payout?.created_at ?? null;
+    if (payout && isWithinClawbackWindow(releasedAt)) {
+      clawback = {
+        maxAmount: Number(payout.net_amount),
+        walletBalance: await getWalletBalance(conn.linker_id),
+        alreadyOpen: existing.some(
+          (c) => c.status === "PENDING" || c.status === "PARTIAL"
+        ),
+      };
+    }
+  }
+
   return (
     <div className="space-y-6">
       <Link
@@ -259,6 +287,35 @@ export default async function ConnectionDetailPage({
               )}
             </div>
           </div>
+
+          {/* Admin-only: recover a released reward (post-release clawback). */}
+          {clawback && (
+            <div className="mt-4 rounded-md border border-rose-200 bg-rose-50/60 p-3">
+              <p className="text-xs font-semibold text-rose-900">
+                Administrator · post-release clawback
+              </p>
+              <p className="mt-0.5 mb-3 text-xs text-rose-800">
+                Available for {FEES.RELEASE_WAIT_DAYS === 7 ? "7" : FEES.RELEASE_WAIT_DAYS} days
+                from release. A clawback recovers only what the Linker&apos;s wallet can
+                cover; the remainder is recorded as outstanding.
+              </p>
+              {clawback.alreadyOpen ? (
+                <p className="text-xs text-rose-800">
+                  An open clawback already exists for this connection — manage it in{" "}
+                  <Link href="/admin/transactions?tab=clawbacks" className="underline">
+                    Admin → Transactions → Clawbacks
+                  </Link>
+                  .
+                </p>
+              ) : (
+                <OpenClawbackForm
+                  connectionId={conn.id}
+                  maxAmount={clawback.maxAmount}
+                  walletBalance={clawback.walletBalance}
+                />
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 

@@ -73,13 +73,13 @@ do $$ begin
   create type jomlink.transaction_status as enum ('PENDING','COMPLETED','FAILED','REVERSED','REFUNDED');
 exception when duplicate_object then null; end $$;
 do $$ begin
-  create type jomlink.transaction_type as enum ('OPPORTUNITY_FUNDING','POSTING_DEPOSIT','LISTING_FEE','ACTIVATION_FEE','LINKER_SERVICE_FEE','REWARD_RELEASE','REFUND','PAYOUT','WALLET_CREDIT','WALLET_DEBIT','WITHDRAWAL');
+  create type jomlink.transaction_type as enum ('OPPORTUNITY_FUNDING','POSTING_DEPOSIT','LISTING_FEE','ACTIVATION_FEE','LINKER_SERVICE_FEE','REWARD_RELEASE','REFUND','PAYOUT','WALLET_CREDIT','WALLET_DEBIT','WITHDRAWAL','CLAWBACK');
 exception when duplicate_object then null; end $$;
 do $$ begin
   create type jomlink.dispute_status as enum ('OPEN','UNDER_REVIEW','RESOLVED','CLOSED');
 exception when duplicate_object then null; end $$;
 do $$ begin
-  create type jomlink.dispute_outcome as enum ('COMPLETED','PARTIALLY_COMPLETED','FAILED','REFUNDED','OTHER');
+  create type jomlink.dispute_outcome as enum ('COMPLETED','PARTIALLY_COMPLETED','FAILED','REFUNDED','OTHER','CLAWBACK');
 exception when duplicate_object then null; end $$;
 do $$ begin
   create type jomlink.notification_channel as enum ('IN_APP','EMAIL','SMS','PUSH');
@@ -413,6 +413,34 @@ create table if not exists jomlink.reviews (
   rating          int not null check (rating between 1 and 5),
   comment         text,
   created_at      timestamptz not null default now()
+);
+
+-- Post-release clawback (§5.12.1, §11.7). A RECOVERY WORKFLOW, not a silent
+-- reversal: records what was decided, what was actually recovered from the
+-- Linker's wallet, and what remains outstanding (routed to manual review).
+create table if not exists jomlink.clawbacks (
+  id                  text primary key default gen_random_uuid()::text,
+  connection_id       text not null references jomlink.connections(id) on delete cascade,
+  opportunity_id      text not null references jomlink.opportunities(id) on delete cascade,
+  dispute_id          text references jomlink.disputes(id) on delete set null,
+  linker_id           text not null references jomlink.users(id) on delete cascade,
+  amount              numeric(14,2) not null check (amount > 0),
+  reason              text not null,
+  decided_by          text not null references jomlink.users(id) on delete restrict,
+  decided_at          timestamptz not null default now(),
+  amount_recovered    numeric(14,2) not null default 0,
+  amount_outstanding  numeric(14,2) not null default 0,
+  status              text not null default 'PENDING'
+                        check (status in ('PENDING','PARTIAL','RECOVERED','CANCELLED')),
+  recovery_method     text,
+  provider_ref        text,
+  provider_response   text,
+  requires_manual_review boolean not null default false,
+  review_note         text,
+  original_payout_id  text references jomlink.payouts(id) on delete set null,
+  recovery_transaction_id text references jomlink.transactions(id) on delete set null,
+  created_at          timestamptz not null default now(),
+  updated_at          timestamptz not null default now()
 );
 
 create table if not exists jomlink.reputation_metrics (

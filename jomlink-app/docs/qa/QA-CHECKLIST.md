@@ -27,8 +27,8 @@ by waiting for a report.
 > run is NOT evidence a row passes — only the row-level mark is.**
 >
 > **Baseline after the 2026-10-26 fixes:** `npx tsc --noEmit` clean ·
-> `npm run lint` clean (0/0) · `npm test` **104 passing / 8 files** (was 88/6) ·
-> `npm run build` **44 routes**.
+> `npm run lint` clean (0/0) · `npm test` **161 passing / 12 files** (was 88/6, then
+> 119/9, 135/10 and 153/11 as each section was closed) · `npm run build` **44 routes**.
 
 **Legend:** 🟥 critical money/compliance path · 🟨 role/guard boundary · ⬜ normal
 · 🎨 UI/UX (visual/copy quality) · 🔌 API/RPC (non-page surface)
@@ -50,7 +50,7 @@ by waiting for a report.
 |---|-----------|----------|--------|-------|
 | 0.1 | Confirm DB migrations applied | See *Required migrations* below — **all must be applied** | | |
 | 0.2 | `npx tsc --noEmit` | No output (clean) — ✅ verified 2026-10-26 | | |
-| 0.3 | `npm test` | **104 passing / 8 files** (Phase 14 baseline was 88/6) — ✅ verified 2026-10-26 | | |
+| 0.3 | `npm test` | **161 passing / 12 files** (Phase 14 baseline was 88/6) — ✅ verified 2026-10-26 | | |
 | 0.4 | `npm run build` | Build succeeds, **44 routes** — ✅ verified 2026-10-26 | | |
 | 0.5 | `npm run lint` | **0 errors, 0 warnings** — ✅ verified 2026-10-26 | | |
 | 0.6 | Restart Supabase/PostgREST after any migration | Schema cache reloaded, no `PGRST` errors | | |
@@ -58,6 +58,9 @@ by waiting for a report.
 | 0.8 | Wallet balance on test Seekers | ≥ RM 1,000 (RM100 floor to post + full reward to accept a Linker) | | |
 | 0.9 | Confirm `RECONCILE_SECRET` is set in the test env | Sweep routes return **401** without the header (see §16) | | |
 | 0.10 | Hard-refresh after deploy | No stale CSS — `backdrop-blur`/`/20` translucent sections render | | |
+| 0.11 | 🔴 Deny-list is code-driven, not DB-driven | Post under `GOVERNMENT_PUBLIC_SECTOR` / `INVESTOR_CONNECTION` | Rejected before any charge. Note: re-enabling a category requires a code change to `DISABLED_CATEGORY_VALUES` (see §18.2) | |
+| 0.12 | 🔴 Payout test accounts are KYC-verified | Check `member_profiles.verified_badge` for the Linker/Seeker used for withdrawals | `true` + `verification_status = VERIFIED`, else **every** withdrawal is blocked by the AML gate (§11.9.2 rule 2) — that is correct behaviour, not a bug | |
+| 0.13 | 🧪 **KYC dev bypass (dev/test only)** | Set `KYC_DEV_BYPASS=true` in `.env.local` and restart the dev server → `/dashboard/kyc` → “Verify me (dev)” | Account becomes verified without a document. **Must be impossible in production** — see 3.38/3.39. Unset the flag when you want real KYC behaviour | |
 
 ### Required migrations — all three must be applied
 
@@ -67,6 +70,8 @@ by waiting for a report.
 | `supabase/phase-payout-request.sql` | Bank withdrawal requests (`WITHDRAWAL` txn type, `users.bank_*`) | |
 | `supabase/phase-14-verification-gated-release.sql` | Verification-gated escrow release (enum values + 9 `connections` cols) | |
 | `supabase/fix-kyc-document-visibility.sql` | **NEW** — admin KYC document viewing (`kyc_records.document_path`) | |
+| `supabase/phase-15-clawback.sql` | **NEW** — post-release clawback (`clawbacks` table, `CLAWBACK` dispute outcome + transaction type) | |
+| `supabase/phase-15-aml-screening.sql` | **NEW** — AML screening state on `payouts` (`screen_risk`, `screen_codes`, `screen_list_version`, `screened_at`, `cleared_by/at`, `clearance_note`) | |
 
 > ⚠️ If a migration is missing, the corresponding section will error. Record the
 > error, mark the section `BLOCKED`, and note the missing migration.
@@ -97,9 +102,9 @@ the following are **expected-fail** — record them, do **not** treat them as ne
 | §5.6.1 | Linker proposes deadline → Seeker accepts; yellow flag on miss | ✅ Built | 9.1–9.5, 7.16–7.17 |
 | §5.6.2 | Progress thread; comment edits keep full revision history and only can edit within 15 minutes after comment only | ✅ **Built** — thread, immutable revision history, and a **15-minute edit window** enforced server-side (`PROGRESS.COMMENT_EDIT_WINDOW_MINUTES`, `lib/progress-window.ts`) | 7.15, 7.28 |
 | §5.7 | Seeker **confirms** → platform **verifies** → platform **releases** | ✅ Built (Phase 14) | 7.1–7.12 |
-| §5.12.1 | Anti-collusion: risk score, high-risk hold, clawback | ⚠️ **Partial** — risk score + `HIGH_RISK_HOLD` built; **no clawback** | 7.6, 7.24 |
-| §11.9.1 | **Category deny-list, server-side, default-deny** | 🔴 **NOT BUILT** — only flagged (`is_restricted_category`) | 11.7, 4.17 |
-| §11.9.2 | AML/sanctions/PEP screen + **KYC-before-payout** | 🔴 **NOT BUILT** | 6.19, 11.17 |
+| §5.12.1 | Anti-collusion: risk score, high-risk hold, clawback | ✅ **Built** — risk score, `HIGH_RISK_HOLD`, and a **post-release clawback recovery workflow** (`clawbacks` table, `lib/clawback.ts`, §11.7-compliant: never negative, never over-recovered, shortfall → manual review) | 7.6, 7.24, 7.30 |
+| §11.9.1 | **Category deny-list, server-side, default-deny** | ✅ **BUILT** — `DISABLED_CATEGORY_VALUES` + `lib/category-policy.ts` (`checkCategoryPostable`, default-deny); enforced in create/publish/edit **before** `chargePostingDeposit` and in admin approve; disabled categories removed from the post/edit forms and the marketplace filter; every refused attempt audited as `OPPORTUNITY_CATEGORY_BLOCKED` | 11.7, 11.7b, 11.7c, 4.17, 4.20 |
+| §11.9.2 | AML/sanctions/PEP screen + **KYC-before-payout** | ✅ **BUILT** — `lib/screening.ts` (`screenPayout`) runs before any ledger movement: KYC-before-payout is a hard `BLOCKED`, sanctions/PEP matches are `BLOCKED`, single-transaction / cumulative / rapid-top-up signals are a `REVIEW` hold a Compliance admin must clear (`compliance:write`, `PAYOUT_COMPLIANCE_CLEARED`). Every screen is recorded (`PAYOUT_SCREEN_RECORDED`). **Caveat:** no sanctions **provider** is integrated — the screen uses a local deny-list and records `providerConfigured: false`. A **dev/test KYC bypass** (`KYC_DEV_BYPASS`, impossible in production) lets you exercise the payout flows without approving KYC per account | 6.19, 6.20, 11.17, 3.38 |
 | §11.11 | Biometric **purge job** + separate training consent | 🔴 **NOT BUILT** — `purge_requested_at` is flag-only | 3.36, 3.37 |
 | §11.5 | Single state machine; holds outrank timeouts | ✅ Built (VERIFIED + `release_hold_until` + sweeps) | 7.24, 7.29 |
 | §11.6 | Multiple-Linker allocations isolated; single winner | ⚠️ **Partial** — no atomic single-winner guard | 5.13 |
@@ -202,6 +207,8 @@ the following are **expected-fail** — record them, do **not** treat them as ne
 | 3.34 | Member wipe request | `wipeBiometricDataAction` | Files purged from bucket, rows cleared | |
 | 3.35 | Graceful degrade | Rename/remove table (or simulate) | Banner shows, **page still loads** other tabs | |
 | 3.36 | 🔴 **Purge job exists** | Look for a biometric purge cron route | ⚠️ **Known gap** (§11.11, PRIV-01): `purge_requested_at` rows are **flagged but never deleted**. Expected-fail | |
+| 3.38 | 🧪 **Dev/test verify shortcut** | With `KYC_DEV_BYPASS=true` (not production) → `/dashboard/kyc` | A “Dev / test mode” card offers **Verify me (dev)**; clicking it sets `verified_badge=true` + `verification_status=VERIFIED` and writes `KYC_DEV_VERIFIED` to the audit log | ✅ **BUILT 2026-10-26** — `lib/kyc-dev-bypass.ts` + `devVerifySelfKycAction`; card hidden unless the server confirms the bypass is available |
+| 3.39 | 🔴 **Bypass is impossible in production** | Deploy with `NODE_ENV=production` **and** `KYC_DEV_BYPASS=true` | Card does not render; the action does **nothing**; withdrawals are still gated; `devVerifySelfKycAction` logs a refusal | ✅ **BUILT 2026-10-26** — `kycDevBypassState()` returns `PRODUCTION_BLOCKED` before it ever reads the flag; pinned by 8 unit tests in `kyc-dev-bypass.test.ts` |
 | 3.37 | 🔴 Separated training consent | Review the biometric consent checkbox | ⚠️ **Known gap**: single bundled KYC consent; model-training has **no separate** consent (§11.11). Expected-fail | |
 
 ---
@@ -233,10 +240,10 @@ the following are **expected-fail** — record them, do **not** treat them as ne
 | 4.14 | Match score | View as a Linker | Score renders (0–100); no `NaN`/`undefined` | |
 | 4.15 | 🟨 Closed opportunity | Open a `COMPLETED` one | No "Apply"/"Select" affordances | |
 | 4.16 | Pagination / limits | Many rows | Correct slicing, nothing duplicated | |
-| 4.17 | 🔴 **Restricted category surfacing** | Filter to `GOVERNMENT_PUBLIC_SECTOR` / `INVESTOR_CONNECTION` | ⚠️ **Known gap** (§11.9.1): category is still selectable and postable. Log expected-fail | |
+| 4.17 | 🔴 **Restricted category surfacing** | Filter to `GOVERNMENT_PUBLIC_SECTOR` / `INVESTOR_CONNECTION` | Neither is offered in the filter; direct URL post is rejected server-side | ✅ **FIXED 2026-10-26** (BUG-009) — both are on the deny-list (`DISABLED_CATEGORY_VALUES`); the marketplace filter and both opportunity forms are built from `PUBLIC_OPPORTUNITY_CATEGORIES`, so a disabled category is not selectable (§11.9.1 rule 3) | |
 | 4.18 | 🎨 Category deep-link | From landing, click a category card | Lands on `/marketplace?category=<value>` with that filter applied | ✅ (live) 2026-10-26 — cards now carry the **enum value**, not the display label (was broken: label never matched the filter) |
 | 4.19 | 🎨 **Dead search box** | Landing page → type a term → click "Search Marketplace" | ⚠️ **BUG**: the landing `<form>` has no `action`, no `name` on the input and no handler → **nothing happens**. Expect this to fail until fixed | ✅ (live) **FIXED 2026-10-26** (BUG-001) — `action="/marketplace" method="get"` + `name="q"`; verified `?q=investor` lands on the marketplace with the term applied |
-| 4.20 | Restricted badge on card | View a restricted listing | Warning badge + `RESTRICTED` confidentiality shown | |
+| 4.20 | Restricted badge on card | View a restricted listing | Warning badge + `RESTRICTED` confidentiality shown | ⏸ legacy rows only — no new restricted-category listing can be created, so this badge now only appears on rows posted before the 2026-10-26 deny-list landed |
 | 4.21 | Empty filter result | Filter with no matches | Clean empty state, filters still usable | |
 
 ---
@@ -299,8 +306,10 @@ the following are **expected-fail** — record them, do **not** treat them as ne
 | 6.16 | Request withdrawal | `/dashboard/wallet` | `WITHDRAWAL` txn `PENDING`; balance held | |
 | 6.17 | 🟨 Over-balance withdrawal | Request > balance | Blocked | |
 | 6.18 | Admin marks paid | `/admin/transactions` → `markPayoutPaidAction` | Txn → `COMPLETED`; member notified | |
-| 6.19 | 🟥 No AML/KYC gate | Request payout with **no KYC** | ⚠️ **Known gap — Phase 15** (§11.9.2). Currently allowed. Log as expected-fail | |
-| 6.20 | 🟥 KYC holder gets paid | Admin marks PAID for an **unverified** member | ⚠️ Same gap — `markPayoutPaidAction` has no verification check. Expected-fail | |
+| 6.19 | 🟥 No AML/KYC gate | Request payout with **no KYC** | Request refused up front with a "verify your identity" message | ✅ **BUILT 2026-10-26** (BUG-010) — `requestPayoutAction` checks `isMemberVerifiedForPayout` **before** creating any payout row; refusal audited as `PAYOUT_SCREEN_BLOCKED` (`stage: request`); the wallet panel shows the requirement and disables the button |
+| 6.20 | 🟥 KYC holder gets paid | Admin marks PAID for an **unverified** member | Settlement **blocked** — no ledger movement | ✅ **BUILT 2026-10-26** (BUG-010) — `markPayoutPaidAction` screens before any ledger entry; an unverified recipient returns `BLOCKED` and `canSettlePayout` refuses **even if someone ticks an override** |
+| 6.20b | 🟥 Large payout held for review | Request a payout ≥ RM 10,000 (verified member) | Held `REVIEW`; Finance cannot pay it; a Compliance admin clears it with a written rationale | ✅ **BUILT 2026-10-26** (BUG-010) — thresholds in `AML` (`PAYOUT_REVIEW_THRESHOLD`, `CUMULATIVE_PAYOUT_THRESHOLD`, `RAPID_TOPUP_WINDOW_HOURS`); `/admin/transactions?tab=requests` shows the verdict + `Clear for payment` (requires `compliance:write`, min-10-char note) |
+| 6.20c | 🟥 Every screen is attributable | Pay a payout, then open `/admin/audit-logs` | A `PAYOUT_SCREEN_RECORDED` entry with party, amount, codes, list version, screening admin and timestamp | ✅ **BUILT 2026-10-26** (BUG-010) — written on every screen, whether it clears, holds or blocks (§11.9.2 rule 4). `providerConfigured: false` is recorded so the missing provider is never mistaken for a clean provider result |
 | 6.21 | Pending top-up not in balance | Start a top-up, do not pay | Balance unchanged; "pending" hint shown separately | |
 | 6.22 | Payout needs bank on file | Request withdrawal before saving bank | Blocked with a clear "save bank details" message | |
 | 6.23 | One open withdrawal | Request twice | Second blocked — only one pending request at a time | |
@@ -349,6 +358,10 @@ the following are **expected-fail** — record them, do **not** treat them as ne
 | 7.21 | 🟥 Sweep idempotency | Run sweep twice | **No duplicate payouts** | |
 | 7.22 | Dispute freezes escrow | Open dispute before release | Escrow frozen; sweep skips it | |
 | 7.29 | 🟥 Sweep respects hold | Run verification sweep on a HIGH-risk hold | Hold wins over the 2-day timeout (§11.5 precedence) | |
+| 7.30 | 🟥 **Post-release clawback** | Admin opens a clawback on a released connection (inside 7 days) → `/admin/transactions?tab=clawbacks` | Only what the wallet can cover is recovered; the rest is recorded as **outstanding** + flagged for manual review; wallet never goes negative; Linker notified; audit `CLAWBACK_OPENED` | ✅ **BUILT 2026-10-26** (BUG-008) — `clawbacks` table + `lib/clawback.ts` + `actions/clawbacks.ts` (`finance:payout`); 15 unit tests |
+| 7.31 | 🟥 Clawback outside window | Open a clawback > 7 days after release | Rejected server-side | ✅ (static) — `isWithinClawbackWindow` checks release time, not creation time |
+| 7.32 | 🟥 Clawback over-recovery | Request more than the net payout released | Rejected server-side (`capAmount`) | ✅ (unit) — `planClawback` refuses amount > cap |
+| 7.33 | 🟥 Clawback on an unreleased connection | Attempt a clawback while escrow is still held | Rejected — use a normal dispute instead | ✅ (static) — requires `release_status === "RELEASED"` |
 
 ---
 
@@ -425,11 +438,11 @@ the following are **expected-fail** — record them, do **not** treat them as ne
 | # | Test | Steps | Expected | Result |
 |---|------|-------|----------|--------|
 | 11.6 | Moderate | `moderateOpportunityAction` | Status flips (approve/flag) | |
-| 11.7 | 🔴 Prohibited category | Post/mod apps under a denied category | ⚠️ **Known gap — Phase 15** (§11.9.1). Server deny-list missing. Log as expected-fail | |
-| 11.7b | 🎨 Investor category parity | Attempt `INVESTOR_CONNECTION` | ⚠️ Currently **treated like any other category** — blueprint calls this non-compliant. Stronger expected-fail | |
-| 11.7c | 🟥 No deposit on blocked post | Attempt to post a blocked category | ⚠️ Also expected-fail: verify whether a deposit was **wrongly charged** (§11.9.1 rule 2) and log the amount | |
+| 11.7 | 🔴 Prohibited category | Post/mod apps under a denied category | Post **rejected**, admin approve **refused**, no deposit charged | ✅ **BUILT 2026-10-26** (BUG-009) — `checkCategoryPostable` in `createOpportunityAction` (both intents), `publishOpportunityAction`, `updateOpportunityAction` and `moderateOpportunityAction`; unit-tested in `category-policy.test.ts` |
+| 11.7b | 🎨 Investor category parity | Attempt `INVESTOR_CONNECTION` | ⚠️ **CLOSED 2026-10-26** — investor now blocked by the same code path as government (previously unrestricted). Verified by unit test, not by UI alone | ✅ **BUILT 2026-10-26** (BUG-009) |
+| 11.7c | 🟥 No deposit on blocked post | Attempt to post a blocked category | No `POSTING_DEPOSIT` transaction exists afterwards | ✅ **BUILT 2026-10-26** (BUG-009) — the guard sits **before** `chargePostingDeposit` in all four paths; no opportunity row is created either |
 | 11.8 | Toggle restricted category | `toggleRestrictedCategoryAction` | Toggle persists; audit logged | |
-| 11.17 | 🟥 **Payout without KYC** | `markPayoutPaidAction` on an unverified member | ⚠️ **Known gap** (§11.9.2 LEG-05). Expected-fail | |
+| 11.17 | 🟥 **Payout without KYC** | `markPayoutPaidAction` on an unverified member | Refused server-side; no ledger movement; audited | ✅ **BUILT 2026-10-26** (BUG-010, §11.9.2 LEG-05) — `KYC_NOT_VERIFIED` → `BLOCKED`, never overridable from the UI | |
 | 11.18 | 🟨 Admin cannot read evidence | Non-party admin opens `/api/evidence/[id]` | Only the connection's Seeker/Linker may read; admin denied or explicitly allowed — verify actual behaviour | |
 
 ### 11c. Overview / Audit / Transactions
@@ -646,6 +659,9 @@ server-side, not just hidden.**
 | 17.11 | Landing search box submits nowhere (open — see 4.19) | 4.19 | |
 | 17.12 | `/how-it-works` + `/fees` describe pre-Phase-14 release (open — see 14.5, 14.6) | 14.5, 14.6 | ✅ **Fixed 2026-10-26** (BUG-003) |
 | 17.13 | Progress comment editable at any time forever (§5.6.2 has no 15-minute limit) | 7.28 | ✅ **Fixed 2026-10-26** (BUG-007) |
+| 17.14 | No way to recover a released reward (§5.12.1 clawback missing entirely) | 7.30–7.33 | ✅ **Built 2026-10-26** (BUG-008) |
+| 17.15 | Government **and** investor categories were postable — only flagged, never actually blocked (§11.9.1, LEG-06) | 4.17, 11.7, 11.7b, 11.7c | ✅ **Fixed 2026-10-26** (BUG-009) — server-side default-deny; 16 unit tests |
+| 17.16 | A member with **no KYC at all** could request and be paid a bank withdrawal (§11.9.2, LEG-04/05) | 6.19, 6.20, 11.17 | ✅ **Fixed 2026-10-26** (BUG-010) — KYC-before-payout + screening + review thresholds; 18 unit tests |
 
 ---
 
@@ -656,15 +672,17 @@ Documented and planned for **Phase 15** (`docs/phase-15-compliance-hardening.md`
 
 | # | Gap | Reference | QA row |
 |---|-----|-----------|--------|
-| 18.1 | Payouts have no AML / KYC gate | `legal-compliance-gaps.md`, blueprint §11.9.2 | 6.19, 6.20, 11.17 |
-| 18.2 | Government & investor categories are flagged, not server-side denied | blueprint §11.9.1 | 4.17, 11.7, 11.7b, 11.7c |
+| 18.1 | ~~Payouts have no AML / KYC gate~~ — **CLOSED 2026-10-26**: KYC-before-payout (hard `BLOCKED`) + sanctions/PEP screen + transaction monitoring thresholds, enforced in `requestPayoutAction` and before every ledger movement in `markPayoutPaidAction` (`lib/screening.ts`). **Remaining limitation (18.1b):** no sanctions **provider** integrated. | `legal-compliance-gaps.md`, blueprint §11.9.2 | 6.19, 6.20, 6.20b, 6.20c, 11.17 |
+| 18.1b | AML **screening provider not integrated** (§11.9.2 rule 5 — Jomlink must obtain written confirmation of the provider's screening scope). The screen applies a **local deny-list** only and records `providerConfigured: false` on every audit entry, so a "clear" result is explicitly **not** a provider sanctions clearance. KYC-before-payout and the monitoring thresholds are fully enforced and do not depend on the provider. | blueprint §11.9.2 rule 5 / LEG-04 | 6.20c |
+| 18.2 | ~~Government & investor categories are flagged, not server-side denied~~ — **CLOSED 2026-10-26**: server-side deny-list built (`DISABLED_CATEGORY_VALUES`, `lib/category-policy.ts`), default-deny, enforced at create/publish/edit/admin-approve before any deposit, audited as `OPPORTUNITY_CATEGORY_BLOCKED`. Remaining limitation: enablement is a **code constant**, not yet a versioned DB-backed Compliance decision (§11.9.1 rule 4 — risk owner/expiry/approver). | blueprint §11.9.1 | 4.17, 11.7, 11.7b, 11.7c |
 | 18.3 | Biometric purge job not implemented | `phase-15-compliance-hardening.md` | 3.36 |
 | 18.4 | Biometric training consent not separated (bundled with KYC consent) | blueprint §11.11 | 3.37 |
 | 18.5 | ~~Progress-comment edit history not stored~~ — **CLOSED 2026-10-26**: revision history was already modelled (`progress_report_comment_revisions`) and verified; the missing **15-minute edit window** is now built and enforced | blueprint §5.6.2 | 7.28 |
 | 18.6 | No atomic single-winner guard for concurrent selection | blueprint §11.6 | 5.13 |
 | 18.7 | No versioned terms acceptance | blueprint §11.10 (Phase 16) | 5.14 |
-| 18.8 | No post-release clawback | blueprint §5.12.1 / §11.7 | — |
+| 18.8 | ~~No post-release clawback~~ — **CLOSED 2026-10-26**: recovery workflow built (`clawbacks`, `lib/clawback.ts`, `actions/clawbacks.ts`). See 18.8b for the remaining, *deliberate* limitation | blueprint §5.12.1 / §11.7 | 7.30 |
 | 18.9 | Stale RM 2,200 escrow on an RM 1,500 opportunity | `phase-12-…md` → *Known unresolved data* | — |
+| 18.8b | Clawback **cannot** reverse an already-withdrawn payout (no provider reversal API integrated). The workflow records the shortfall as outstanding and routes to manual review, exactly as §11.7 requires — it does **not** promise guaranteed recovery. Recovery from a positive wallet balance works today. | blueprint §11.7 / FIN-04 | 7.30 |
 | 18.10 | Three migrations may be unapplied (pre-flight 0.1) | `PROJECT-TRACKING.md` | 0.1 |
 | 18.11 | Bank payouts are admin-settled — no real transfer | `PROJECT-TRACKING.md` gap #11 | 6.18 |
 | 18.12 | Sweep routes are open when `RECONCILE_SECRET` is unset | `PROJECT-TRACKING.md` | 16.4 |
@@ -682,9 +700,11 @@ Documented and planned for **Phase 15** (`docs/phase-15-compliance-hardening.md`
 | BUG-005 | 2026-10-26 | §16 (16.4) | anon | `GET` any of the 4 sweep/reconcile routes with `RECONCILE_SECRET` unset | Not publicly callable | All four routes only checked the header **if** the env var was set → publicly callable in a misconfigured production env (money-moving sweep). Also used a non-constant-time compare. | P1 | ✅ **Fixed** — new `src/lib/cron-auth.ts` (`requireCronAuth`): 401 on mismatch, **503 in production when unset**, constant-time compare, secret never echoed; 7 new unit tests |
 | BUG-006 | 2026-10-26 | §4b / §14 (4.18) | anon | Click a landing category card | Lands with that category filtered | Card href was built from the **display label** (`?category=Investor%20Connection`), but `/marketplace` filters on the **enum value** → filter never applied | P2 | ✅ **Fixed** — cards now emit the enum value from `OPPORTUNITY_CATEGORIES` |
 | BUG-007 | 2026-10-26 | §7 (7.28) | Seeker / Linker | Edit your own progress comment | Editable only within 15 minutes of posting; previous version kept as history | Revision history was already modelled correctly, but **any comment could be edited at any time, forever** — §5.6.2 requires a 15-minute limit. The thread was therefore not an honest contemporaneous record: a party could rewrite their position days later. | P2 (evidence integrity) | ✅ **Fixed** — `PROGRESS.COMMENT_EDIT_WINDOW_MINUTES = 15` + pure `lib/progress-window.ts`; enforced in `editProgressCommentAction` **before** any DB write, clock measured from `created_at` so re-editing cannot extend it; UI hides Edit and explains the closure once expired; 9 unit tests |
+| BUG-008 | 2026-10-26 | §7 (7.30) | Admin | Recover a reward after it was released (fake meeting discovered later) | A clawback inside 7 days that never over-draws the wallet | **No clawback existed at all.** Once released, money was unrecoverable by design — the "Seeker discovers the meeting was fake a week later" gap (§5.12.1) was wide open. `DISPUTE_WINDOW_DAYS = 7` was defined but only used for the dispute window, never for recovery. | P1 (money / compliance) | ✅ **Built** — `clawbacks` table + `text`-typed status; `lib/clawback.ts` (`planClawback`, `isWithinClawbackWindow`) enforcing §11.7 (no negative wallet, cap = net payout, shortfall → outstanding + manual review); `actions/clawbacks.ts` (`finance:payout`) open/retry/write-off; admin tab + connection-page panel; `CLAWBACK` ledger + audit actions; 15 unit tests |
+| BUG-009 | 2026-10-26 | §11b / §4b (11.7, 11.7b, 11.7c, 4.17) | Seeker / Admin | Post an opportunity under `GOVERNMENT_PUBLIC_SECTOR` or `INVESTOR_CONNECTION`; also try publishing a draft, editing a listing into the category, and an admin "Approve" | Hard server-side refusal, no deposit charged, category not offered in any selector | **The deny-list did not exist.** `GOVERNMENT_PUBLIC_SECTOR` was only *flagged* (`is_restricted_category` + `RESTRICTED` confidentiality) and still postable and fundable; `INVESTOR_CONNECTION` had **no** restriction at all. Both were offered as normal options in the post form, the edit form and the marketplace `?category=` filter. Blueprint v1.2 §11.9.1 makes this a launch blocker (LEG-02/03/06) and explicitly rules that a UI flag is "not a substitute for a hard block". | P1 (compliance / launch blocker) | ✅ **Fixed** — `DISABLED_CATEGORY_VALUES` in `constants.ts` + pure `lib/category-policy.ts` (`checkCategoryPostable`, **default-deny**: unknown values are refused too); enforced in `createOpportunityAction` (draft *and* publish intents), `publishOpportunityAction`, `updateOpportunityAction` and `moderateOpportunityAction`, each **before** `chargePostingDeposit` so a blocked listing never pays; selectors (post form, edit form, marketplace filter) now derive from `PUBLIC_OPPORTUNITY_CATEGORIES`; a disabled category already on a row still stays selectable in its own editor so an unrelated edit cannot silently re-categorise it; every refusal audited as `OPPORTUNITY_CATEGORY_BLOCKED` (member attempts carry `admin_id = null` but remain attributable); error copy moves no internal vocabulary and states that no deposit was charged; 16 unit tests. **Remaining limitation** (§18.2): enablement is still a code constant rather than a versioned DB-backed Compliance decision with risk owner, approver and expiry |
+| BUG-010 | 2026-10-26 | §6c / §11b (6.19, 6.20, 6.20b, 6.20c, 11.17) | Linker / Finance | Request a bank withdrawal with **no KYC**, then try to settle it as an admin | Refused at request; settlement blocked; every screen recorded | **No AML or identity gate existed on money-out.** `requestPayoutAction` only checked bank details, balance and a single-open-request rule; `markPayoutPaidAction` moved the ledger with no identity check and no screening. A member with an unverified identity could request *and be paid* client funds, and no sanctions/PEP screen or monitoring threshold existed anywhere. Blueprint v1.2 §11.9.2 rules 1–4 make all of that **enforced, not advisory** (LEG-04 / LEG-05, launch blocker). | P1 (money / compliance) | ✅ **Built** — pure `lib/screening.ts` `screenPayout()` with precedence `BLOCKED > REVIEW > CLEAR`: unverified identity and sanctions hits are `BLOCKED` and **never overridable**; single-transaction (`AML.PAYOUT_REVIEW_THRESHOLD`), cumulative/structuring and rapid top-up-then-withdraw signals are a `REVIEW` hold. Enforced in `requestPayoutAction` (early, before any row is created) and in `markPayoutPaidAction` **before any ledger movement**; `clearPayoutForPaymentAction` (`compliance:write`, mandatory ≥10-char rationale) releases a `REVIEW` hold and records who cleared it. Every screen writes `PAYOUT_SCREEN_RECORDED` with party, amount, codes, list version, screening admin and timestamp; blocks write `PAYOUT_SCREEN_BLOCKED`; clearances write `PAYOUT_COMPLIANCE_CLEARED`. Admin queue shows the verdict + clearance control; the wallet panel shows the requirement and disables the button; migration `phase-15-aml-screening.sql` adds the workflow columns. 18 unit tests. **Remaining limitation** (§18.1b): no sanctions **provider** is integrated — the screen applies a local deny-list and records `providerConfigured: false` so a "clear" result is never mistaken for a provider clearance |
 
 **Severity guide**
-
 - **P1 — Critical:** money wrong, data leak, auth bypass, stuck escrow, crash on a core flow.
 - **P2 — Major:** a function is unusable, but no money/data loss (e.g. buttons on a settled record).
 - **P3 — Minor:** cosmetic, copy, layout, non-blocking UX.

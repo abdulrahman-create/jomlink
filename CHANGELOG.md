@@ -10,7 +10,163 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates are ISO
 
 ---
 
-## [Fixed] — 2026-10-26 · QA run — 6 defects found and fixed
+## [Added] — 2026-10-26 · Dev/test KYC bypass (`KYC_DEV_BYPASS`)
+
+The §11.9.2 KYC-before-payout gate blocks **every** withdrawal for an unverified
+member, which made the withdrawal / payout-settlement / review-threshold /
+Compliance-clearance flows impractical to exercise in dev and QA.
+
+### Added
+- `src/lib/kyc-dev-bypass.ts` — a single, deliberately production-hostile switch.
+  - `NODE_ENV === "production"` → `PRODUCTION_BLOCKED`, returned **before** the
+    environment variable is read, so a stray `KYC_DEV_BYPASS=true` in a
+    production `.env` cannot disable identity verification.
+  - Outside production it still requires an explicit `KYC_DEV_BYPASS=true`
+    opt-in; without it a dev session behaves exactly like production.
+- `isKycSatisfiedForPayout()` in `lib/queries.ts` — the bypass-aware gate used by
+  `requestPayoutAction`, `markPayoutPaidAction` and the wallet panel. The
+  unbypassable `isMemberVerifiedForPayout()` is kept for reporting.
+- `devVerifySelfKycAction` + a **Dev / test mode** card on `/dashboard/kyc`
+  (**Verify me (dev)**). Rendered only when the server has already confirmed the
+  bypass is available; the action re-checks the same guard.
+- `src/lib/kyc-dev-bypass.test.ts` — 8 tests pinning that production is refused
+  for every affirmative flag spelling, and that dev requires the opt-in.
+
+### Changed
+- Every screen audit entry now records `devBypass: true` when the KYC
+  requirement was satisfied by the bypass, so a fake badge is never silent.
+  Self-verification writes `KYC_DEV_VERIFIED` with the actor, environment and
+  prior verification state.
+- `.env.production.example` documents the flag as inert in production.
+
+### Verified
+`tsc --noEmit` clean · `npm run lint` 0/0 · `npm test` **161 passing / 12 files**
+(was 153/11) · `npm run build` **44 routes**.
+
+> Enable locally: `KYC_DEV_BYPASS=true` in `.env.local`, restart the dev server,
+> then `/dashboard/kyc` → **Verify me (dev)**. Unset it to restore real KYC
+> behaviour. Docs: `phase-15-compliance-hardening.md` §2; QA rows 0.13, 3.38, 3.39.
+
+---
+
+
+> **Compliance launch blocker (LEG-04/05) closed for the enforced controls.**
+> Money can no longer leave the platform without a verified identity, and every
+> payout is screened and recorded before the ledger moves.
+
+### Fixed
+- **Any member could withdraw without identity verification** (BUG-010,
+  checklist 6.19, 6.20, 6.20b, 6.20c, 11.17; blueprint v1.2 §11.9.2).
+  `requestPayoutAction` only checked bank details, balance and one-open-request;
+  `markPayoutPaidAction` moved the ledger with **no** identity check, no
+  sanctions/PEP screen and no monitoring threshold. §11.9.2 makes all of those
+  *enforced, not advisory*.
+
+### Added
+- `src/lib/constants.ts` — `AML` config: `PAYOUT_REVIEW_THRESHOLD` (RM 10,000),
+  `CUMULATIVE_PAYOUT_THRESHOLD` (RM 25,000 / 30 days), `RAPID_TOPUP_WINDOW_HOURS`
+  (24), `LIST_VERSION`.
+- `src/lib/screening.ts` — pure, shared decision module: `screenPayout()` →
+  `{risk, codes, reasons, listVersion, providerConfigured}`, plus
+  `canSettlePayout()`, `requiresComplianceClearance()`, `hitDenyList()`.
+  Precedence **`BLOCKED` > `REVIEW` > `CLEAR`**:
+  - `KYC_NOT_VERIFIED` → **BLOCKED** — never overridable (not a checkbox, not
+    `SUPER_ADMIN`).
+  - `SANCTIONS_HIT` → **BLOCKED** — screens the member's registered name *and*
+    the **bank beneficiary name** the money actually reaches.
+  - `SINGLE_TRANSACTION_THRESHOLD` / `CUMULATIVE_THRESHOLD` (structuring) /
+    `RAPID_TOPUP_THEN_WITHDRAW` → **REVIEW** hold for Compliance.
+- `src/lib/screening.test.ts` — 18 unit tests.
+- `clearPayoutForPaymentAction` (`compliance:write`) — releases a `REVIEW` hold
+  with a **mandatory** attributable rationale, re-screens first, and refuses to
+  clear a `BLOCKED` payout. It does not pay; Finance still settles.
+- Audit actions `PAYOUT_SCREEN_RECORDED`, `PAYOUT_SCREEN_BLOCKED`,
+  `PAYOUT_COMPLIANCE_CLEARED` — every screen is attributable (party, amount,
+  codes, list version, reviewer, timestamp), whether it clears, holds or blocks.
+- `supabase/phase-15-aml-screening.sql` — `payouts.screen_risk`, `screen_codes`,
+  `screen_list_version`, `screened_at`, `cleared_by`, `cleared_at`,
+  `clearance_note` + a partial index for the Compliance queue. **Needs applying.**
+
+### Changed
+- `requestPayoutAction` refuses an unverified member **before** creating any
+  payout row (no dead work queued) and audits the refusal.
+- `markPayoutPaidAction` screens **before any ledger movement**.
+- `/admin/transactions?tab=requests` shows the screening verdict + signal codes
+  and offers `Clear for payment` to `compliance:write` admins only.
+- The wallet withdrawal panel states the KYC requirement and disables the button
+  when the member is unverified (the server still enforces it).
+
+### Verified
+`npx tsc --noEmit` clean · `npm run lint` 0/0 · `npm test` **153 passing / 11
+files** (was 135/10) · `npm run build` **44 routes**.
+
+### Still open (§11.9.2 rule 5)
+No sanctions/PEP/adverse-media **provider** is integrated. The screen applies a
+local deny-list and every audit entry records `providerConfigured: false`, so a
+"clear" result is explicitly **not** a provider sanctions clearance. KYC and the
+monitoring thresholds are fully enforced and do not depend on the provider.
+
+> Docs: `jomlink-app/docs/phase-15-compliance-hardening.md` §2 marked built;
+> `docs/PROJECT-TRACKING.md` and `docs/qa/QA-CHECKLIST.md` (§0, §6c, §11b, §17,
+> §18, §19) updated.
+
+---
+
+
+> **Compliance launch blocker (LEG-02/03/06) closed.** Regulated categories are now
+> refused by the server at every entry point instead of merely being flagged.
+
+### Fixed
+- **Government and investor categories were postable** (BUG-009, checklist 4.17,
+  11.7, 11.7b, 11.7c; blueprint v1.2 §11.9 / §11.9.1). `GOVERNMENT_PUBLIC_SECTOR`
+  was only *flagged* (`is_restricted_category` + `RESTRICTED` confidentiality) and
+  could still be posted and funded, and `INVESTOR_CONNECTION` carried **no**
+  restriction at all. §11.9.1 rules that a UI label is "not a substitute for a
+  hard block", so the flag did not satisfy the requirement.
+
+### Added
+- `src/lib/constants.ts` — `DISABLED_CATEGORY_VALUES` (single source of truth);
+  `PUBLIC_OPPORTUNITY_CATEGORIES` now derives from it, so selectors and the server
+  rule read the same list.
+- `src/lib/category-policy.ts` — pure, UI-and-server-shared policy module:
+  `checkCategoryPostable()`, `isCategoryEnabled()`, `isCategoryDisabled()`.
+  **Default-deny:** a category is postable only if it is a known enum member AND
+  not on the deny-list, so an unknown or future value can never go live by
+  accident. Returns a member-facing message that states no deposit was charged and
+  never leaks internal vocabulary.
+- `AUDIT_ACTIONS.OPPORTUNITY_CATEGORY_BLOCKED` — every refused attempt is written
+  to `audit_logs` with category, reason code, intent and `depositCharged: false`
+  (member attempts carry `admin_id = null` but stay attributable via `details.userId`).
+- `src/lib/category-policy.test.ts` — 16 unit tests (deny-list membership,
+  investor/government parity, default-deny, message hygiene, single-source-of-truth).
+
+### Changed
+- Deny-list enforced **before** `chargePostingDeposit` in
+  `createOpportunityAction` (draft **and** publish intents),
+  `publishOpportunityAction`, `updateOpportunityAction` and
+  `moderateOpportunityAction` (admin approve) — a blocked listing can never be
+  created and never pays a deposit (§11.9.1 rule 2).
+- The post form, the edit form and the marketplace `?category=` filter are built
+  from `PUBLIC_OPPORTUNITY_CATEGORIES`, so a disabled category is not offered
+  (§11.9.1 rule 3). A listing already stored under a now-disabled category keeps
+  its own value in *its own* editor (labelled "disabled") so an unrelated edit
+  cannot silently re-categorise it.
+
+### Verified
+`npx tsc --noEmit` clean · `npm run lint` 0/0 · `npm test` **135 passing / 10
+files** (was 119/9) · `npm run build` **44 routes**.
+
+### Still open (§11.9.1 rule 4)
+Enablement is a **code constant**, not yet a versioned, audited Compliance
+decision stored in the database (risk owner, rationale, approver, expiry,
+re-audit cadence). Removing a category currently requires a deploy.
+
+> Docs: `jomlink-app/docs/phase-15-compliance-hardening.md` §1 marked built;
+> `docs/qa/QA-CHECKLIST.md` traceability matrix, §4b, §11b, §17, §18.2 and §19
+> updated.
+
+---
+
 
 > Ran `jomlink-app/docs/qa/QA-CHECKLIST.md` (v2, 20 sections) against the code and
 > a live dev server. Six real defects found; all fixed and re-verified. The
@@ -51,6 +207,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates are ISO
   `counterOfferAction` (behaviour unchanged).
 
 ### Fixed (follow-up, same day)
+- **No way to recover a released reward** (BUG-008, checklist 7.30) — blueprint
+  §5.12.1 requires a post-release clawback for the "Seeker discovers the meeting
+  was fake a week later" case. `COMPLETION.DISPUTE_WINDOW_DAYS = 7` existed but
+  was never wired to any recovery path, so once a reward was released it was
+  unrecoverable by design. Added:
+  - `supabase/phase-15-clawback.sql` (+ canonical schema) — new `jomlink.clawbacks`
+    table and a `CLAWBACK` value on both `dispute_outcome` and `transaction_type`
+    (with the required `alter type … add value if not exists` self-heal, GRANTs
+    and schema-cache reload). **⚠️ Not yet applied.**
+  - `src/lib/clawback.ts` — pure `planClawback()` / `isWithinClawbackWindow()`.
+    Encodes §11.7 faithfully: never pushes a wallet negative, never recovers more
+    than the net payout released for the job, and records any shortfall as
+    `amount_outstanding` + `requires_manual_review` rather than claiming a
+    recovery it did not achieve.
+  - `src/app/actions/clawbacks.ts` — `openClawbackAction`,
+    `recoverClawbackAction`, `cancelClawbackAction`, all gated on
+    `finance:payout`. Recovery is a normal double-entry movement into a new
+    `platform:clawback` account, audited (`CLAWBACK_OPENED` /
+    `CLAWBACK_RECOVERED` / `CLAWBACK_CLOSED`), and the Linker is notified with
+    the exact amount taken and the amount still outstanding.
+  - UI — `Admin → Transactions → Clawbacks` tab (open, retry, write-off with a
+    required reason) and an admin-only panel on the connection detail page when
+    a released reward is still inside the 7-day window.
+  - `src/lib/clawback.test.ts` — 15 tests.
+  - Honest limitation recorded as gap **18.8b**: an already-withdrawn payout
+    cannot be reversed (no provider reversal API), so that portion stays
+    outstanding and goes to manual review — which is exactly what §11.7 says a
+    clawback must do rather than promising guaranteed recovery.
 - **Progress comments could be edited forever** (BUG-007, checklist 7.28) —
   blueprint §5.6.2 requires edits to keep full revision history *and* to be
   allowed only within 15 minutes of posting. Revision history was already

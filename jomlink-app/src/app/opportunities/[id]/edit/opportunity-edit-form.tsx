@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
-import { OPPORTUNITY_CATEGORIES, FEES, formatMYR } from "@/lib/constants";
+import { OPPORTUNITY_CATEGORIES, PUBLIC_OPPORTUNITY_CATEGORIES, FEES, formatMYR } from "@/lib/constants";
 import {
   updateOpportunityAction,
   type OpportunityState,
@@ -19,6 +19,22 @@ import { computeFunding } from "@/lib/funding";
 import type { OpportunityRow } from "@/lib/jomlink-types";
 
 const RESTRICTED = "GOVERNMENT_PUBLIC_SECTOR";
+
+/**
+ * Categories offered in the editor (§11.9.1 rule 3). One exception: a listing
+ * that is already stored under a category which has since been disabled keeps
+ * its own value in the list, so the Seeker can edit the rest of the listing
+ * without the select silently switching category. Changing INTO a disabled
+ * category is refused by the server action.
+ */
+function selectableCategoriesFor(current: string) {
+  const list = [...PUBLIC_OPPORTUNITY_CATEGORIES] as { value: string; label: string }[];
+  if (!list.some((c) => c.value === current)) {
+    const known = OPPORTUNITY_CATEGORIES.find((c) => c.value === current);
+    if (known) list.push({ value: known.value, label: `${known.label} (disabled)` });
+  }
+  return list;
+}
 
 function money(n: number) {
   return new Intl.NumberFormat("en-MY", {
@@ -50,6 +66,10 @@ export function OpportunityEditForm({ opportunity }: { opportunity: OpportunityR
     String(Number(opportunity.offer_amount ?? 0))
   );
   const isRestricted = category === RESTRICTED;
+  const categoryOptions = React.useMemo(
+    () => selectableCategoriesFor(opportunity.category),
+    [opportunity.category]
+  );
 
   const funding = computeFunding(Number(reward) || 0);
 
@@ -103,7 +123,7 @@ export function OpportunityEditForm({ opportunity }: { opportunity: OpportunityR
               <Select
                 id="category"
                 name="category"
-                options={OPPORTUNITY_CATEGORIES.map((c) => ({ value: c.value, label: c.label }))}
+                options={categoryOptions}
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
                 required
