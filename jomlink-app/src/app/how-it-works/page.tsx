@@ -10,7 +10,7 @@ export const metadata = {
 const STEPS = [
   {
     title: "1. A Seeker posts an opportunity",
-    body: "Describe who you need to reach, why, and the outcome you want. Set a reward and fund it into escrow. Jomlink charges a 10% activation fee on the reward.",
+    body: "Describe who you need to reach, why, and the outcome you want. Set a reward and pay a 10% posting deposit from your wallet (which includes the RM10 listing fee). The reward itself is not charged yet.",
   },
   {
     title: "2. Linkers propose introductions",
@@ -18,7 +18,7 @@ const STEPS = [
   },
   {
     title: "3. The Seeker selects a Linker",
-    body: "Compare proposals, negotiate terms, and select the Linker you trust. The agreed reward and deliverable are locked in.",
+    body: "Compare proposals, negotiate terms, and select the Linker you trust. The agreed reward and deliverable are locked in, and the full reward is placed into escrow from your wallet.",
   },
   {
     title: "4. The introduction happens",
@@ -26,7 +26,7 @@ const STEPS = [
   },
   {
     title: "5. Completion and payment",
-    body: "When the Seeker marks the connection complete, the reward is released to the Linker immediately. Jomlink deducts a 10% service fee from the payout.",
+    body: "The Linker submits evidence and the Seeker confirms it. Jomlink then verifies the completion before releasing the reward — so no single party controls payment. Jomlink deducts a 10% service fee from the Linker's payout.",
   },
 ];
 
@@ -81,9 +81,11 @@ export default function HowItWorksPage() {
             of the reward, deducted from the payout on completion.
           </li>
           <li>
-            Escrow release:{" "}
-            <strong className="text-foreground">{FEES.RELEASE_WAIT_DAYS} days</strong>{" "}
-            after completion, unless a dispute is raised.
+            Escrow release: after the Seeker confirms and Jomlink verifies the
+            completion. A{" "}
+            <strong className="text-foreground">{FEES.RELEASE_WAIT_DAYS}-day</strong>{" "}
+            safety net applies if a verified connection is not released, unless a
+            dispute is raised.
           </li>
         </ul>
         <p className="text-sm">

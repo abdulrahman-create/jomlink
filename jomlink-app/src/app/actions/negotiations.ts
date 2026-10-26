@@ -94,7 +94,7 @@ export async function counterOfferAction(
       };
     }
 
-    const parsed = CounterSchema.safeParse({
+  const parsed = CounterSchema.safeParse({
     offeredReward: formData.get("offeredReward"),
     message: formData.get("message") || undefined,
   });

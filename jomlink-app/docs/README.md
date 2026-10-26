@@ -23,6 +23,7 @@ Phased build plan for the Jomlink business-introductions marketplace.
 | `phase-14-verification-gated-release.md` | **Built** — verification-gated escrow release: Seeker confirms, platform verifies, only the platform releases (⚠️ migration not applied) |
 | `phase-15-compliance-hardening.md` | **Planned** — category deny-list, AML/KYC-before-payout, biometric purge job (closes legal loopholes) |
 | `legal-compliance-gaps.md` | **Legal gaps checklist** — loopholes vs Malaysian law, for counsel review |
+| `qa/QA-CHECKLIST.md` | **Manual QA script** — every user-facing function, UI/UX, copy accuracy, API security, regression suite |
 
 ## How to use
 
@@ -36,5 +37,7 @@ When a phase's *Definition of Done* is met, mark it complete in
 > escrow payout visibility + bank withdrawal requests (`phase-05-transactions.md`,
 > `phase-08-dashboard.md`, `phase-07-admin.md`).
 
-> Source of truth for the product: `../JOMLINK PLATFORM BLUEPRINT v1.md`
-> (kept at the workspace root).
+> Source of truth for the product: `../JOMLINK PLATFORM BLUEPRINTv1.2.md`
+> (kept at the workspace root). Part 11 of v1.2 is authoritative and its launch gates
+> (category deny-list, AML/KYC-before-payout, biometric purge) are tracked in
+> `phase-15-compliance-hardening.md` as **planned, not built**.

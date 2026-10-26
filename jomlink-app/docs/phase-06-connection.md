@@ -110,6 +110,7 @@
 - Opens when the Seeker accepts the deadline; remains open **until the deadline ends** (closes at `COMPLETED` / `FAILED` / `EXPIRED` / `DISPUTED`).
 - **Linker posts** the reports (reporting obligation); **both Linker and Seeker comment** on them.
 - Either party **may edit their own comment**, but **every edit preserves the previous version as update history**, visible to both parties and to admin.
+- **Edit window: 15 minutes from posting** (blueprint §5.6.2). Enforced server-side in `editProgressCommentAction` via `lib/progress-window.ts` and `PROGRESS.COMMENT_EDIT_WINDOW_MINUTES`; the UI hides the Edit control and explains the closure once the window expires. The clock is measured from `created_at`, so repeated edits cannot extend it. After the window the comment is final — post a new comment instead.
 - Nothing in the thread is ever destroyed — it is the platform's **evidence of record** for later disputes (§9.11.1).
 - Extension requests are raised **through the thread** so the reason and both positions are captured.
 

@@ -4,6 +4,9 @@
 function** of the Jomlink platform so bugs are found by *running the flow*, not
 by waiting for a report.
 
+**Baseline:** verified **2026-10-26** against Blueprint **v1.2** and
+`PROJECT-TRACKING.md` (Phase 14 built, Phase 15 planned).
+
 **How to use this file**
 
 1. Work top to bottom. Each section is self-contained — you can run just one.
@@ -13,7 +16,31 @@ by waiting for a report.
    log line**. File it against the `BUG-…` ID at the bottom.
 4. Never mark `PASS` on a flow you could not fully complete. `BLOCKED` is honest.
 
+> **Last run — 2026-10-26 (static + live audit).** Scope: every route, server
+> action, API route and public page was read against the rows below, and the
+> public/payment surfaces were exercised in a running dev server. Results are
+> recorded in the `Result` column as `✅ (static)` (verified by reading the code
+> path — no DB write was made), `✅ (live)` (exercised in the browser / over
+> HTTP), `❌ FAIL (BUG-00x)` (defect filed and — where marked — fixed in this
+> run), or `⏸` (needs seeded data / a real payment gateway; **not** verified).
+> Rows still blank are simply not done yet. **A green `tsc`/`lint`/`test`/`build`
+> run is NOT evidence a row passes — only the row-level mark is.**
+>
+> **Baseline after the 2026-10-26 fixes:** `npx tsc --noEmit` clean ·
+> `npm run lint` clean (0/0) · `npm test` **104 passing / 8 files** (was 88/6) ·
+> `npm run build` **44 routes**.
+
 **Legend:** 🟥 critical money/compliance path · 🟨 role/guard boundary · ⬜ normal
+· 🎨 UI/UX (visual/copy quality) · 🔌 API/RPC (non-page surface)
+
+**Sections:**
+`0` pre-flight + blueprint gap matrix · `1` auth · `2` profile · `3` KYC ·
+`4` marketplace · `5` proposals · `6` money · `7` connection lifecycle ·
+`8` disputes · `9` deadlines/appointments · `10` notifications ·
+`11` admin/RBAC · **`12` cross-cutting security** · **`13` UI/UX & design system** ·
+**`14` public pages & copy accuracy** · **`15` business profile & role** ·
+**`16` API & cron endpoint security** · `17` regression suite · `18` known gaps ·
+`19` bug log · `20` sign-off
 
 ---
 
@@ -22,12 +49,15 @@ by waiting for a report.
 | # | Setup step | Expected | Result | Notes |
 |---|-----------|----------|--------|-------|
 | 0.1 | Confirm DB migrations applied | See *Required migrations* below — **all must be applied** | | |
-| 0.2 | `npx tsc --noEmit` | No output (clean) | | |
-| 0.3 | `npm test` | **88 passing** (Phase 14 baseline) | | |
-| 0.4 | `npm run build` | Build succeeds | | |
-| 0.5 | Restart Supabase/PostgREST after any migration | Schema cache reloaded, no `PGRST` errors | | |
-| 0.6 | Seed test data | ≥2 Seeker accounts, ≥2 Linker accounts, 1 admin per role | | |
-| 0.7 | Wallet balance on test Seekers | ≥ RM 500 (rules need RM 100 min reward) | | |
+| 0.2 | `npx tsc --noEmit` | No output (clean) — ✅ verified 2026-10-26 | | |
+| 0.3 | `npm test` | **104 passing / 8 files** (Phase 14 baseline was 88/6) — ✅ verified 2026-10-26 | | |
+| 0.4 | `npm run build` | Build succeeds, **44 routes** — ✅ verified 2026-10-26 | | |
+| 0.5 | `npm run lint` | **0 errors, 0 warnings** — ✅ verified 2026-10-26 | | |
+| 0.6 | Restart Supabase/PostgREST after any migration | Schema cache reloaded, no `PGRST` errors | | |
+| 0.7 | Seed test data | ≥2 Seeker accounts, ≥2 Linker accounts, 1 admin per role | | |
+| 0.8 | Wallet balance on test Seekers | ≥ RM 1,000 (RM100 floor to post + full reward to accept a Linker) | | |
+| 0.9 | Confirm `RECONCILE_SECRET` is set in the test env | Sweep routes return **401** without the header (see §16) | | |
+| 0.10 | Hard-refresh after deploy | No stale CSS — `backdrop-blur`/`/20` translucent sections render | | |
 
 ### Required migrations — all three must be applied
 
@@ -53,6 +83,30 @@ by waiting for a report.
 | Admin `FINANCE` | payouts only | |
 | Admin `OPERATIONS` | moderate only (no finance/kyc:write) | |
 | **Suspended** member | guard testing | |
+
+### Blueprint v1.2 → implementation traceability
+
+The blueprint is **v1.2 (15 Oct 2026)**, which promoted three of its sections to
+**launch blockers**. Phase 15 ("Compliance Hardening") is **planned but NOT BUILT**, so
+the following are **expected-fail** — record them, do **not** treat them as new bugs.
+
+| Blueprint § | Requirement | Implementation status | QA row |
+|---|---|---|---|
+| §3.9 / §11.4 | 10% posting deposit, RM10 listing fee **inside** it, RM100 reward floor | ✅ Built (`FEES`, `chargePostingDeposit`) | 4.2–4.4, 4.9–4.10 |
+| §3.10 | Listing frozen once **any** proposal exists | ✅ Built | 4.6–4.7, 5.12 |
+| §5.6.1 | Linker proposes deadline → Seeker accepts; yellow flag on miss | ✅ Built | 9.1–9.5, 7.16–7.17 |
+| §5.6.2 | Progress thread; comment edits keep full revision history and only can edit within 15 minutes after comment only | ✅ **Built** — thread, immutable revision history, and a **15-minute edit window** enforced server-side (`PROGRESS.COMMENT_EDIT_WINDOW_MINUTES`, `lib/progress-window.ts`) | 7.15, 7.28 |
+| §5.7 | Seeker **confirms** → platform **verifies** → platform **releases** | ✅ Built (Phase 14) | 7.1–7.12 |
+| §5.12.1 | Anti-collusion: risk score, high-risk hold, clawback | ⚠️ **Partial** — risk score + `HIGH_RISK_HOLD` built; **no clawback** | 7.6, 7.24 |
+| §11.9.1 | **Category deny-list, server-side, default-deny** | 🔴 **NOT BUILT** — only flagged (`is_restricted_category`) | 11.7, 4.17 |
+| §11.9.2 | AML/sanctions/PEP screen + **KYC-before-payout** | 🔴 **NOT BUILT** | 6.19, 11.17 |
+| §11.11 | Biometric **purge job** + separate training consent | 🔴 **NOT BUILT** — `purge_requested_at` is flag-only | 3.36, 3.37 |
+| §11.5 | Single state machine; holds outrank timeouts | ✅ Built (VERIFIED + `release_hold_until` + sweeps) | 7.24, 7.29 |
+| §11.6 | Multiple-Linker allocations isolated; single winner | ⚠️ **Partial** — no atomic single-winner guard | 5.13 |
+| §11.10 | Versioned terms acceptance per transaction | 🔴 **NOT BUILT** (Phase 16) | 5.14 |
+
+> **Rule:** if a Phase 15 item starts working during a test run, **raise it with the
+> team** — it means undocumented code has landed. Do not silently flip it to `PASS`.
 
 ---
 
@@ -147,6 +201,8 @@ by waiting for a report.
 | 3.33 | Member withdraws consent | `withdrawBiometricConsentAction` | Consent false, recorded | |
 | 3.34 | Member wipe request | `wipeBiometricDataAction` | Files purged from bucket, rows cleared | |
 | 3.35 | Graceful degrade | Rename/remove table (or simulate) | Banner shows, **page still loads** other tabs | |
+| 3.36 | 🔴 **Purge job exists** | Look for a biometric purge cron route | ⚠️ **Known gap** (§11.11, PRIV-01): `purge_requested_at` rows are **flagged but never deleted**. Expected-fail | |
+| 3.37 | 🔴 Separated training consent | Review the biometric consent checkbox | ⚠️ **Known gap**: single bundled KYC consent; model-training has **no separate** consent (§11.11). Expected-fail | |
 
 ---
 
@@ -177,6 +233,11 @@ by waiting for a report.
 | 4.14 | Match score | View as a Linker | Score renders (0–100); no `NaN`/`undefined` | |
 | 4.15 | 🟨 Closed opportunity | Open a `COMPLETED` one | No "Apply"/"Select" affordances | |
 | 4.16 | Pagination / limits | Many rows | Correct slicing, nothing duplicated | |
+| 4.17 | 🔴 **Restricted category surfacing** | Filter to `GOVERNMENT_PUBLIC_SECTOR` / `INVESTOR_CONNECTION` | ⚠️ **Known gap** (§11.9.1): category is still selectable and postable. Log expected-fail | |
+| 4.18 | 🎨 Category deep-link | From landing, click a category card | Lands on `/marketplace?category=<value>` with that filter applied | ✅ (live) 2026-10-26 — cards now carry the **enum value**, not the display label (was broken: label never matched the filter) |
+| 4.19 | 🎨 **Dead search box** | Landing page → type a term → click "Search Marketplace" | ⚠️ **BUG**: the landing `<form>` has no `action`, no `name` on the input and no handler → **nothing happens**. Expect this to fail until fixed | ✅ (live) **FIXED 2026-10-26** (BUG-001) — `action="/marketplace" method="get"` + `name="q"`; verified `?q=investor` lands on the marketplace with the term applied |
+| 4.20 | Restricted badge on card | View a restricted listing | Warning badge + `RESTRICTED` confidentiality shown | |
+| 4.21 | Empty filter result | Filter with no matches | Clean empty state, filters still usable | |
 
 ---
 
@@ -195,6 +256,12 @@ by waiting for a report.
 | 5.9 | 🟨 Select on closed opp | Try selecting after `LINKER_SELECTED` | Blocked (`OPPORTUNITY_CLOSED_FOR_SELECTION_STATUSES`) | |
 | 5.10 | Withdraw proposal | Withdraw own | → `WITHDRAWN`; no further action offered | |
 | 5.11 | Proposals received view | `/dashboard/proposals-received` | Seeker sees all incoming, correct statuses | |
+| 5.12 | 🟨 Listing locks on first proposal | Submit a proposal, then try to edit the opportunity | Edit blocked once **any** proposal exists (§3.10) | |
+| 5.13 | 🔴 Concurrent selection | Two Seeker tabs select two different Linkers at once | ⚠️ **Known gap** (§11.6): no atomic single-winner guard. Only one should win — verify and log | |
+| 5.14 | Versioned terms acceptance | Accept terms as either party | ⚠️ **Known gap** (§11.10, Phase 16): no `terms_acceptances` record. Expected-fail | |
+| 5.15 | 🎨 Negotiation panel UX | Open the thread | Messages in chronological order, author labels correct, composer disabled when terminal | |
+| 5.16 | Optional proposed reward | Leave "Proposed reward" blank on apply | Proposal uses the Seeker's `offer_amount`; hint text shows the RM figure | |
+| 5.17 | 🟥 Reward floor on negotiate | Counter `RM 50` | Rejected (RM100 minimum) server-side, not just in the form | |
 
 ---
 
@@ -232,7 +299,12 @@ by waiting for a report.
 | 6.16 | Request withdrawal | `/dashboard/wallet` | `WITHDRAWAL` txn `PENDING`; balance held | |
 | 6.17 | 🟨 Over-balance withdrawal | Request > balance | Blocked | |
 | 6.18 | Admin marks paid | `/admin/transactions` → `markPayoutPaidAction` | Txn → `COMPLETED`; member notified | |
-| 6.19 | 🟥 No AML/KYC gate | Request payout with **no KYC** | ⚠️ **Known gap — Phase 15.** Currently allowed. Log as expected-fail | |
+| 6.19 | 🟥 No AML/KYC gate | Request payout with **no KYC** | ⚠️ **Known gap — Phase 15** (§11.9.2). Currently allowed. Log as expected-fail | |
+| 6.20 | 🟥 KYC holder gets paid | Admin marks PAID for an **unverified** member | ⚠️ Same gap — `markPayoutPaidAction` has no verification check. Expected-fail | |
+| 6.21 | Pending top-up not in balance | Start a top-up, do not pay | Balance unchanged; "pending" hint shown separately | |
+| 6.22 | Payout needs bank on file | Request withdrawal before saving bank | Blocked with a clear "save bank details" message | |
+| 6.23 | One open withdrawal | Request twice | Second blocked — only one pending request at a time | |
+| 6.24 | 🎨 Money formatting | Inspect every amount | `RM 1,000.00` style everywhere; no `NaN`, no `undefined`, no float drift | |
 
 ---
 
@@ -257,9 +329,15 @@ by waiting for a report.
 | 7.12 | 🟥 No double release | Release twice | Second attempt **no-ops**; money moves once | |
 | 7.13 | Mark failed | Mark connection failed | → `FAILED`; no release | |
 | 7.14 | 🟨 Appointment on closed connection | Schedule on `COMPLETED` | Blocked (`isConnectionOpen`) | |
-| 7.15 | Progress thread | `/dashboard/connections/[id]/progress` | Posts in order; author roles correct | |
+| 7.15 | Progress thread | `/dashboard/connections/[id]/progress` | Posts in order; author roles correct | ✅ (static) — reports + comments hydrate in order with LINKER/SEEKER role labels |
 | 7.16 | Yellow flag | Miss a commitment | Flag `RAISED`; visible to both parties | |
 | 7.17 | Clear flag | Deliver late | Flag → `CLEARED` | |
+| 7.23 | 🟨 **Seeker cannot verify** | Look for a verify button as Seeker | **None** — `verifyCompletionAction` is platform-only | |
+| 7.24 | 🟥 High-risk hold blocks release | Trigger a HIGH risk completion | `release_hold_until` set ~7 days; **no release** until cleared (§11.5 precedence) | |
+| 7.25 | Deficiency cure window | Reject with reason, Linker re-submits | Cure window = 3 days; loop advances correctly | |
+| 7.26 | 🎨 Reward & payout card | View as Linker | Gross reward, **net after 10%**, and **when** it lands all shown | |
+| 7.27 | 🟨 Evidence for wrong allocation | Submit evidence against another connection | Rejected server-side | |
+| 7.28 | Progress comment edit history | Edit your own comment on a progress report | Previous wording preserved in **update history**; edit allowed **only within 15 minutes** of posting; after that the comment is final | ✅ **FIXED 2026-10-26** (BUG-007) — revision history already existed; the **15-minute window was missing** and is now enforced server-side + reflected in the UI. 9 unit tests (`progress-window.test.ts`) |
 
 ### 7b. Timeout sweeps (can be triggered manually)
 
@@ -270,6 +348,7 @@ by waiting for a report.
 | 7.20 | Verification sweep | `api/connections/verification-sweep` | `AWAITING_VERIFICATION` past window auto-releases with review flag | |
 | 7.21 | 🟥 Sweep idempotency | Run sweep twice | **No duplicate payouts** | |
 | 7.22 | Dispute freezes escrow | Open dispute before release | Escrow frozen; sweep skips it | |
+| 7.29 | 🟥 Sweep respects hold | Run verification sweep on a HIGH-risk hold | Hold wins over the 2-day timeout (§11.5 precedence) | |
 
 ---
 
@@ -346,8 +425,12 @@ by waiting for a report.
 | # | Test | Steps | Expected | Result |
 |---|------|-------|----------|--------|
 | 11.6 | Moderate | `moderateOpportunityAction` | Status flips (approve/flag) | |
-| 11.7 | 🔴 Prohibited category | Post/mod apps under a denied category | ⚠️ **Known gap — Phase 15.** Server deny-list missing. Log as expected-fail | |
+| 11.7 | 🔴 Prohibited category | Post/mod apps under a denied category | ⚠️ **Known gap — Phase 15** (§11.9.1). Server deny-list missing. Log as expected-fail | |
+| 11.7b | 🎨 Investor category parity | Attempt `INVESTOR_CONNECTION` | ⚠️ Currently **treated like any other category** — blueprint calls this non-compliant. Stronger expected-fail | |
+| 11.7c | 🟥 No deposit on blocked post | Attempt to post a blocked category | ⚠️ Also expected-fail: verify whether a deposit was **wrongly charged** (§11.9.1 rule 2) and log the amount | |
 | 11.8 | Toggle restricted category | `toggleRestrictedCategoryAction` | Toggle persists; audit logged | |
+| 11.17 | 🟥 **Payout without KYC** | `markPayoutPaidAction` on an unverified member | ⚠️ **Known gap** (§11.9.2 LEG-05). Expected-fail | |
+| 11.18 | 🟨 Admin cannot read evidence | Non-party admin opens `/api/evidence/[id]` | Only the connection's Seeker/Linker may read; admin denied or explicitly allowed — verify actual behaviour | |
 
 ### 11c. Overview / Audit / Transactions
 
@@ -391,57 +474,214 @@ server-side, not just hidden.**
 | 12.1 | 🔴 No secret leakage in HTML | Service-role key / signed URLs never in page source | |
 | 12.2 | 🔴 No IDOR | Change an `[id]` in the URL to another user's → **403/404** | |
 | 12.3 | Input validation server-side | Bypass client validation via direct POST → still rejected | |
-| 12.4 | XSS | Enter `<script>alert(1)</script>` in text fields | Rendered as text, not executed | |
-| 12.5 | SQL/NoSQL injection | `' OR 1=1 --` in search | Treated as literal text | |
-| 12.6 | Money as integers/cents | Inspect all amounts | No float rounding drift (e.g. 0.1+0.2) | |
-| 12.7 | Empty states | Every list with zero rows | Helpful copy, no crash | |
-| 12.8 | Loading states | Slow connection | Skeleton/spinner, no layout jump | |
-| 12.9 | Error boundaries | Force a server error | Friendly error page, not a stack trace | |
-| 12.10 | Console clean | Full pass | No React hydration/key warnings | |
-| 12.11 | Responsive 375px | Mobile viewport | No horizontal scroll on tables/nav | |
-| 12.12 | Responsive 1440px | Desktop | Layout intact | |
-| 12.13 | Keyboard nav | Tab through forms | All actions reachable; focus visible | |
-| 12.14 | `prefers-reduced-motion` | Enable OS setting | Animations reduced | |
-| 12.15 | Browser back after action | Use back button | No duplicate submission / stale state | |
-| 12.16 | Double-click submit | Rapid double-click a submit | Only **one** operation occurs | |
+| 12.4 | XSS | Enter `<script>alert(1)</script>` in text fields | Rendered as text, not executed |
+| 12.5 | SQL/NoSQL injection | `' OR 1=1 --` in search | Treated as literal text |
+| 12.6 | Money as integers/cents | Inspect all amounts | No float rounding drift (e.g. 0.1+0.2) |
+| 12.7 | Empty states | Every list with zero rows | Helpful copy, no crash |
+| 12.8 | Loading states | Slow connection | Skeleton/spinner, no layout jump |
+| 12.9 | Error boundaries | Force a server error | Friendly error page, not a stack trace |
+| 12.10 | Console clean | Full pass | No React hydration/key warnings |
+| 12.11 | Responsive 375px | Mobile viewport | No horizontal scroll on tables/nav |
+| 12.12 | Responsive 1440px | Desktop | Layout intact |
+| 12.13 | Keyboard nav | Tab through forms | All actions reachable; focus visible |
+| 12.14 | `prefers-reduced-motion` | Enable OS setting | Animations reduced |
+| 12.15 | Browser back after action | Use back button | No duplicate submission / stale state |
+| 12.16 | Double-click submit | Rapid double-click a submit | Only **one** operation occurs |
+| 12.17 | 🔴 Mass-assignment | Send extra fields to a profile/opportunity action | Unknown fields ignored; server validates an allow-list |
+| 12.18 | 🔴 Object reference on actions | Re-POST a server action with another user's `id` | Rejected server-side (ownership re-checked) |
+| 12.19 | 🔴 Private routes not indexed | Check `robots`/sitemap | `/dashboard`, `/admin`, `/api` are not publicly indexed |
+| 12.20 | Path traversal / MIME spoof | Upload with a crafted filename and a fake extension | Rejected; stored extension derived from MIME, not filename |
 
 ---
 
-## 13. Regression suite — bugs already found & fixed
+## 13. 🎨 UI / UX & design system
+
+> Brand: **carmine `#BF0040`** primary, cotton-candy `#F5A3AF` accent, black, `#FEFEFE`
+> white. Display font is **Sora** (`.font-display`); body uses the default sans.
+> Every finding here is real UX debt even when the logic behind it works —
+> a `P3` is still worth logging.
+
+### 13a. Visual system
+
+| # | Test | Steps | Expected | Result |
+|---|------|-------|----------|--------|
+| 13.1 | Brand colour usage | Inspect primary buttons/links | Carmine `#BF0040`; no stray default-blue or off-palette colours | |
+| 13.2 | Display font | Landing + section headings | Sora renders (`.font-display`); no FOUT flash of fallback | |
+| 13.3 | Typography scale | All heading levels | Consistent h1→h4 steps; no clipping on long titles | |
+| 13.4 | Icons not emojis | Scan every category/pillar card | **Lucide** icons only — emojis are a regression | |
+| 13.5 | Card / border / radius | Compare all cards | One radius + border treatment; no mixed conventions | |
+| 13.6 | Translucency legibility | Landing sections over `PageBackground` | Text stays readable over the hero image; scrim present | |
+| 13.7 | Empty states | Every list with zero rows | Helpful copy + a next action, never a bare "No data" | |
+| 13.8 | Error states | Force an action failure | Inline message near the control; no raw error codes | |
+| 13.9 | Loading states | Throttle to Slow 3G | Skeletons match final layout; no content jump | |
+| 13.10 | Pending / disabled buttons | Submit a slow action | Button shows pending and is non-clickable | |
+
+### 13b. Responsive & accessibility
+
+| # | Test | Steps | Expected | Result |
+|---|------|-------|----------|--------|
+| 13.11 | 375 px mobile | Mobile viewport, every page | No horizontal scroll; tables scroll inside their own box | |
+| 13.12 | 768 px tablet | Tablet width | Grid reflows; nav usable | |
+| 13.13 | 1440 px desktop | Desktop | Content max-width respected, not stretched | |
+| 13.14 | Dashboard nav < `md` | Narrow the window | Sidebar hides, horizontal nav appears, every item reachable | |
+| 13.15 | Keyboard-only pass | Tab through login → post → apply | Logical order, visible focus ring, no traps | |
+| 13.16 | Icon-only buttons labelled | Inspect remove/edit icon buttons | `aria-label` present (e.g. "Remove business") | |
+| 13.17 | Decorative icons | Inspect inline icons | `aria-hidden="true"`; not read by screen reader | |
+| 13.18 | Heading hierarchy | Audit one page | Exactly one `h1`; no skipped levels | |
+| 13.19 | Colour contrast | Check muted text on translucent cards | ≥ 4.5:1 body, ≥ 3:1 large — failing rows get a P2/P3 | |
+| 13.20 | `prefers-reduced-motion` | Enable OS setting | Hero zoom/parallax stops; animations reduced | |
+| 13.21 | Form labelling | Inspect every input | `<Label htmlFor>` bound, or `aria-label` on the input | |
+| 13.22 | Focus after error | Submit an invalid form | Focus moves to the first invalid field or the error summary | |
+
+### 13c. Money & status presentation
+
+| # | Test | Steps | Expected | Result |
+|---|------|-------|----------|--------|
+| 13.23 | Signed amount colours | Wallet transaction list | In = green `+`, out = red `−`, pending = amber | |
+| 13.24 | Date formatting | Any date surfaced in UI | Deterministic `DD/MM/YYYY` (no hydration mismatch) | |
+| 13.25 | Status badge vocabulary | Compare statuses across pages | Same label + colour for the same status everywhere | |
+| 13.26 | Fee disclosure before commit | Post opportunity, accept Linker | Gross, deposit, listing fee and net all shown **before** confirming | |
+| 13.27 | Long-value overflow | Very large reward / long name | Tiles wrap, no layout break (`tabular-nums` + `break-words`) | |
+| 13.28 | No console/network errors | Full pass, watch Network + Console | No 500s, no failed RSC requests, no hydration errors | |
+
+---
+
+## 14. 🎨 Public pages & copy accuracy
+
+> **Why this section exists:** the public pages are the only place a regulator,
+> a member or counsel reads the platform's rules. If the copy contradicts the
+> code, that is a **compliance finding**, not a typo. Two pages are known to be
+> stale (see rows 14.5 and 14.6).
+
+| # | Test | Steps | Expected | Result |
+|---|------|-------|----------|--------|
+| 14.1 | Landing sections render | `/` | Hero → search → problem/solution → categories → how it works → testimonials → CTA, in order | |
+| 14.2 | Landing CTAs | Click every button | "Find a connection" → `/register`; "Browse Opportunities" → `/marketplace`; "See how it works" → `/how-it-works` | |
+| 14.3 | 🔴 **No fake inventory** | Categories strip on `/` | Every count is a **real** number from the DB, or clearly illustrative. Hard-coded "240+ Opportunities" with an empty marketplace is misleading | ✅ (live) **FIXED 2026-10-26** (BUG-002) — hard-coded counts removed entirely; cards now read "Browse live listings" |
+| 14.4 | 🔴 Restricted categories not advertised | Categories strip on `/` | `Investor Connection` / `Government / Public Sector` are **not** promoted as browsable products while they are restricted (§11.8/§11.9) | ✅ (live) **FIXED 2026-10-26** (BUG-002) — strip now derives from `PUBLIC_OPPORTUNITY_CATEGORIES` which excludes both; verified 9 cards, neither present |
+| 14.5 | 🔴 **`/how-it-works` accuracy** | Read steps 1 and 5 | Must NOT say "fund it into escrow" at posting or a "10% activation fee". Deposit is 10% at post; reward settles on **accepting a Linker** | ✅ (live) **FIXED 2026-10-26** (BUG-003) — steps 1, 3, 5 and the fees list rewritten to the deposit-at-post + confirm→verify→release model |
+| 14.6 | 🔴 **`/fees` accuracy** | Read "Escrow and release" | Must describe **Seeker confirms → platform verifies → platform releases** (Phase 14). Not "released the moment you mark it complete" | ✅ (live) **FIXED 2026-10-26** (BUG-003) — "Reward settlement" + "Escrow and release" rewritten; no remaining mark-complete→paid copy |
+| 14.7 | `/fees` numbers correct | Check every figure | 10% deposit, RM10 listing fee **inside**, RM100 floor, 10% service fee, 7-day safety net | |
+| 14.8 | `/prohibited` clarity | Read the page | Bribery, guaranteed government outcomes, confidential data, personal-data trading all explicitly prohibited | |
+| 14.9 | `/trust-safety` clarity | Read the page | Verification, escrow, disputes, audit trail described accurately | |
+| 14.10 | Footer / header links | Click every nav + footer link | Zero 404s; no link to a page that does not exist | |
+| 14.11 | Logged-in header | Header as a real user | Shows avatar + dashboard, not "Log in" | |
+| 14.12 | Logged-out header | Header anonymous | Shows Log in / Sign up correctly | |
+| 14.13 | SEO metadata | View page source on each public page | Unique `title` + `description`; no placeholder text | |
+| 14.14 | Copy tone & grammar | Read all public copy | Consistent voice, no lorem ipsum, no {placeholder} leakage | ✅ (live) **FIXED 2026-10-26** (BUG-004) — footer rendered **"introducions"** on every page; corrected to "introductions" |
+
+---
+
+## 15. Business profile & account role — `src/app/dashboard/business/*`
+
+> This page is **not covered** by earlier sections and is where "one member,
+> multiple roles" (§1.5.1) is actually set.
+
+| # | Test | Steps | Expected | Result |
+|---|------|-------|----------|--------|
+| 15.1 | View business page | `/dashboard/business` | Account-role card + business list render for a fresh user | |
+| 15.2 | Change account role | Select Seeker / Linker / Both → save | Persists on `users.role`; dashboard adapts | |
+| 15.3 | 🔴 Role change guard | Attempt to set an invalid role | Rejected server-side (`SEEKER` / `LINKER` / `BOTH` only) | |
+| 15.4 | Add business profile | Name + industry + description | Row appears; website optional | |
+| 15.5 | Required-field validation | Submit with blank name | Blocked with inline message | |
+| 15.6 | Business objectives | Tick several objectives | All persist and re-render checked | |
+| 15.7 | Remove business | Remove a business | Row deleted; confirmation offered | |
+| 15.8 | 🟨 Cannot remove another's business | Craft a request for a foreign id | Forbidden (ownership re-checked) | |
+| 15.9 | Business appears in context | Create an opportunity as that business | Business context selectable / shown (§2.10) | |
+| 15.10 | 🎨 Empty business state | Fresh account | Encouraging empty state with a clear "Add business" action | |
+
+---
+
+## 16. 🔌 API & scheduled-endpoint security
+
+> **Why this section exists:** ~10 of the 44 routes are NOT pages. They are the
+> most attackable surface (money sweeps, signed-URL signers, webhooks) and the
+> current checklist never calls them directly.
+
+### 16a. Cron / sweep routes — `x-reconcile-secret`
+
+| # | Test | Steps | Expected | Result |
+|---|------|-------|----------|--------|
+| 16.1 | 🔴 No header → 401 | `GET /api/connections/verification-sweep` with no header | **401** when `RECONCILE_SECRET` is set | ✅ (static + unit) — shared `requireCronAuth`; covered by `src/lib/cron-auth.test.ts` |
+| 16.2 | 🔴 Wrong secret → 401 | Send `x-reconcile-secret: nope` | **401** | ✅ (static + unit) |
+| 16.3 | Correct secret → 200 | Send the real secret | `{ok:true,...}`; idempotent | ✅ (static) |
+| 16.4 | 🔴 `RECONCILE_SECRET` unset | Run in an env without it | Route is **open** — this is a launch blocker; log it | ✅ **FIXED 2026-10-26** (BUG-005) — now **503 in production** when unset; still open in local dev (intentional, documented). Live-confirmed: dev returns 200, prod path covered by unit test |
+| 16.5 | Release sweep auth | Same tests on `/api/connections/release-sweep` | 401 without secret | |
+| 16.6 | Deadline sweep auth | Same tests on `/api/connections/deadline-sweep` | 401 without secret | |
+| 16.7 | Reconcile auth | Same tests on `/api/payments/toyyibpay/reconcile` | 401 without secret | |
+| 16.8 | 🔴 Sweep is repeatable | Run each sweep twice in a row | Second run changes nothing (no double pay / double warn) | |
+
+### 16b. Webhooks & signed-URL routes
+
+| # | Test | Steps | Expected | Result |
+|---|------|-------|----------|--------|
+| 16.9 | 🔴 ToyyibPay hash check | POST callback with a bad hash | Rejected; no credit | |
+| 16.10 | 🔴 Amount/currency mismatch | Callback with the right id but wrong amount | Rejected/quarantined | |
+| 16.11 | Evidence route auth | `GET /api/evidence/[id]` as a non-party | 401/403 — only the connection's two parties | |
+| 16.12 | Evidence route expiry | Use an expired evidence link | Denied | |
+| 16.13 | Negotiation route auth | `GET /api/proposals/[id]/negotiations` as a third party | 401/403 | |
+| 16.14 | 🔴 KYC doc signer | `/api/admin/kyc/[id]/document` as each admin role | Only `kyc:read`; signed URL expires in 60s | |
+| 16.15 | 🔴 Biometric signer | `/api/admin/kyc/biometrics/[id]?asset=selfie` | Only `kyc:read`; correct asset returned | |
+| 16.16 | 🟨 Method tampering | `POST`/`PUT` to a GET-only route | 405, not a crash | |
+| 16.17 | Response hygiene | Inspect every JSON response | No service-role key, no internal stack traces, no other users' PII | |
+
+---
+
+## 17. Regression suite — bugs already found & fixed
 
 > These were real bugs. Re-run them **every release** — they must never come back.
 
 | # | Previously broken | Re-test | Result |
 |---|-------------------|---------|--------|
-| 13.1 | Admin could not view submitted KYC documents (`document_ref` signed as bucket key) | 3.10, 3.11, 3.12 | |
-| 13.2 | "View document" link hidden when the reference field was blank | 3.11 | |
-| 13.3 | Approve/Reject buttons still shown on `REJECTED` KYC records | 3.16 | |
-| 13.4 | Same button bug on the Relationships tab | 3.24 | |
-| 13.5 | Stale re-POST could flip a settled KYC verdict | 3.18 | |
+| 17.1 | Admin could not view submitted KYC documents (`document_ref` signed as bucket key) | 3.10, 3.11, 3.12 | |
+| 17.2 | "View document" link hidden when the reference field was blank | 3.11 | |
+| 17.3 | Approve/Reject buttons still shown on `REJECTED` KYC records | 3.16 | |
+| 17.4 | Same button bug on the Relationships tab | 3.24 | |
+| 17.5 | Stale re-POST could flip a settled KYC verdict | 3.18 | |
+| 17.6 | Seeker was sole arbiter of completion AND payment (Phase 14) | 7.5, 7.18 | |
+| 17.7 | Pending top-up was counted in wallet balance | 6.21 | |
+| 17.8 | Seeker "pending escrow" tile never cleared (read immutable funding rows) | 6.1, 6.21 | |
+| 17.9 | Deadline extension applied unilaterally | 9.1–9.3 | |
+| 17.10 | Admin "Approve" could activate without charging the deposit | 4.2 | |
+| 17.11 | Landing search box submits nowhere (open — see 4.19) | 4.19 | |
+| 17.12 | `/how-it-works` + `/fees` describe pre-Phase-14 release (open — see 14.5, 14.6) | 14.5, 14.6 | ✅ **Fixed 2026-10-26** (BUG-003) |
+| 17.13 | Progress comment editable at any time forever (§5.6.2 has no 15-minute limit) | 7.28 | ✅ **Fixed 2026-10-26** (BUG-007) |
 
 ---
 
-## 14. Known gaps — do NOT report as new bugs
+## 18. Known gaps — do NOT report as new bugs
 
-These are documented, planned for Phase 15 (`docs/phase-15-compliance-hardening.md`).
-Mark them **expected-fail**, not `FAIL`.
+Documented and planned for **Phase 15** (`docs/phase-15-compliance-hardening.md`) or
+**Phase 16**. Mark them **expected-fail**, not `FAIL`.
 
-| # | Gap | Reference |
-|---|-----|-----------|
-| 14.1 | Payouts have no AML / KYC gate | `legal-compliance-gaps.md`, blueprint §11.9.2 |
-| 14.2 | Government & investor categories are flagged, not server-side denied | blueprint §11.9.1 |
-| 14.3 | Biometric purge job not implemented | `phase-15-compliance-hardening.md` |
-| 14.4 | Stale RM 2,200 escrow on an RM 1,500 opportunity | `phase-12-…md` → *Known unresolved data* |
-| 14.5 | Three migrations may be unapplied (pre-flight 0.1) | `PROJECT-TRACKING.md` |
+| # | Gap | Reference | QA row |
+|---|-----|-----------|--------|
+| 18.1 | Payouts have no AML / KYC gate | `legal-compliance-gaps.md`, blueprint §11.9.2 | 6.19, 6.20, 11.17 |
+| 18.2 | Government & investor categories are flagged, not server-side denied | blueprint §11.9.1 | 4.17, 11.7, 11.7b, 11.7c |
+| 18.3 | Biometric purge job not implemented | `phase-15-compliance-hardening.md` | 3.36 |
+| 18.4 | Biometric training consent not separated (bundled with KYC consent) | blueprint §11.11 | 3.37 |
+| 18.5 | ~~Progress-comment edit history not stored~~ — **CLOSED 2026-10-26**: revision history was already modelled (`progress_report_comment_revisions`) and verified; the missing **15-minute edit window** is now built and enforced | blueprint §5.6.2 | 7.28 |
+| 18.6 | No atomic single-winner guard for concurrent selection | blueprint §11.6 | 5.13 |
+| 18.7 | No versioned terms acceptance | blueprint §11.10 (Phase 16) | 5.14 |
+| 18.8 | No post-release clawback | blueprint §5.12.1 / §11.7 | — |
+| 18.9 | Stale RM 2,200 escrow on an RM 1,500 opportunity | `phase-12-…md` → *Known unresolved data* | — |
+| 18.10 | Three migrations may be unapplied (pre-flight 0.1) | `PROJECT-TRACKING.md` | 0.1 |
+| 18.11 | Bank payouts are admin-settled — no real transfer | `PROJECT-TRACKING.md` gap #11 | 6.18 |
+| 18.12 | Sweep routes are open when `RECONCILE_SECRET` is unset | `PROJECT-TRACKING.md` | 16.4 |
 
 ---
 
-## 15. Bug log
+## 19. Bug log
 
 | ID | Date | Section | Role | Steps | Expected | Actual | Sev | Status |
 |----|------|---------|------|-------|----------|--------|-----|--------|
-| BUG-001 | | | | | | | P1/P2/P3 | Open |
-| BUG-002 | | | | | | | | |
+| BUG-001 | 2026-10-26 | §4b (4.19) | anon | Landing → type term → "Search Marketplace" | Lands on `/marketplace?q=<term>` | Nothing happened — `<form>` had no `action`, input had no `name`, no handler. Search was completely dead. | P2 | ✅ **Fixed** — `action="/marketplace" method="get" role="search"` + `name="q"`; verified live |
+| BUG-002 | 2026-10-26 | §14 (14.3, 14.4) | anon | View `/` categories strip | Real counts only; restricted categories not advertised | Hard-coded "240+/180+/320+ Opportunities" (fake inventory) and promoted `Investor Connection` + `Government / Public Sector` — both compliance-restricted (§11.9.1) | P1 (compliance) | ✅ **Fixed** — counts removed; strip derives from new `PUBLIC_OPPORTUNITY_CATEGORIES` in `constants.ts` |
+| BUG-003 | 2026-10-26 | §14 (14.5, 14.6) | anon | Read `/how-it-works` + `/fees` | Describe deposit-at-post + confirm→verify→release | Copy said "fund it into escrow" at posting, "10% activation fee", and reward released "the moment you mark it complete" — contradicts Phase 14 and the actual code | P1 (compliance/misleading) | ✅ **Fixed** — both pages rewritten; `eslint`/`tsc` clean |
+| BUG-004 | 2026-10-26 | §14 (14.14) | anon | Read the footer on any page | "Jomlink facilitates introductions" | Rendered **"introducions"** — brand typo on every page | P3 | ✅ **Fixed** — `site-footer.tsx` |
+| BUG-005 | 2026-10-26 | §16 (16.4) | anon | `GET` any of the 4 sweep/reconcile routes with `RECONCILE_SECRET` unset | Not publicly callable | All four routes only checked the header **if** the env var was set → publicly callable in a misconfigured production env (money-moving sweep). Also used a non-constant-time compare. | P1 | ✅ **Fixed** — new `src/lib/cron-auth.ts` (`requireCronAuth`): 401 on mismatch, **503 in production when unset**, constant-time compare, secret never echoed; 7 new unit tests |
+| BUG-006 | 2026-10-26 | §4b / §14 (4.18) | anon | Click a landing category card | Lands with that category filtered | Card href was built from the **display label** (`?category=Investor%20Connection`), but `/marketplace` filters on the **enum value** → filter never applied | P2 | ✅ **Fixed** — cards now emit the enum value from `OPPORTUNITY_CATEGORIES` |
+| BUG-007 | 2026-10-26 | §7 (7.28) | Seeker / Linker | Edit your own progress comment | Editable only within 15 minutes of posting; previous version kept as history | Revision history was already modelled correctly, but **any comment could be edited at any time, forever** — §5.6.2 requires a 15-minute limit. The thread was therefore not an honest contemporaneous record: a party could rewrite their position days later. | P2 (evidence integrity) | ✅ **Fixed** — `PROGRESS.COMMENT_EDIT_WINDOW_MINUTES = 15` + pure `lib/progress-window.ts`; enforced in `editProgressCommentAction` **before** any DB write, clock measured from `created_at` so re-editing cannot extend it; UI hides Edit and explains the closure once expired; 9 unit tests |
 
 **Severity guide**
 
@@ -451,7 +691,7 @@ Mark them **expected-fail**, not `FAIL`.
 
 ---
 
-## 16. Test-run sign-off
+## 20. Test-run sign-off
 
 | Field | Value |
 |---|---|

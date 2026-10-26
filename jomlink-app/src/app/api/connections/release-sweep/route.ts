@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { requireCronAuth } from "@/lib/cron-auth";
 import { runAutoReleaseCheck } from "@/app/actions/transactions";
 
 /**
@@ -15,20 +16,15 @@ import { runAutoReleaseCheck } from "@/app/actions/transactions";
  *        https://app/api/connections/release-sweep
  *
  * Auth: when RECONCILE_SECRET is set, the `x-reconcile-secret` header must match.
- * When it is unset (local dev), the endpoint is open — matching the payments
- * reconcile and deadline-sweep routes.
+ * When it is NOT set the route fails closed in production (503) and stays open
+ * only in local dev — see `src/lib/cron-auth.ts`.
  *
  * Idempotent: `runAutoReleaseCheck` skips any connection already
  * RELEASED/REFUNDED/VOID/HELD, so overlapping runs and retries never double-pay.
  */
 export async function GET(request: NextRequest) {
-  const secret = process.env.RECONCILE_SECRET;
-  if (secret) {
-    const provided = request.headers.get("x-reconcile-secret");
-    if (provided !== secret) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-    }
-  }
+  const denied = requireCronAuth(request, "release-sweep");
+  if (denied) return denied;
 
   try {
     const result = await runAutoReleaseCheck();

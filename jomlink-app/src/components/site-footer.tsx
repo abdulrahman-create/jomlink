@@ -55,7 +55,7 @@ export function SiteFooter() {
             © {new Date().getFullYear()} Jomlink. All rights reserved.
           </p>
           <p className="text-xs text-muted-foreground">
-            Jomlink facilitates introducions — it does not guarantee business outcomes.
+            Jomlink facilitates introductions — it does not guarantee business outcomes.
           </p>
         </div>
       </div>

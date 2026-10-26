@@ -13,7 +13,8 @@ import {
 } from "@/lib/queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { formatDate } from "@/lib/constants";
+import { formatDate, PROGRESS } from "@/lib/constants";
+import { commentEditWindow } from "@/lib/progress-window";
 import type {
   ProgressReportRow,
   ProgressReportCommentRow,
@@ -187,6 +188,9 @@ export default async function ProgressThreadPage({
                     </p>
                     {(r.comments ?? []).map((c) => {
                       const mine = c.author_id === user.id;
+                      // §5.6.2: own comments are editable only inside the
+                      // short window, measured from the original post time.
+                      const editWindow = commentEditWindow(c.created_at);
                       return (
                         <div
                           key={c.id}
@@ -234,10 +238,25 @@ export default async function ProgressThreadPage({
 
                           {!threadEnded && mine && (
                             <div className="mt-2">
-                              <EditProgressComment
-                                commentId={c.id}
-                                currentBody={c.body}
-                              />
+                              {editWindow.canEdit ? (
+                                <>
+                                  <EditProgressComment
+                                    commentId={c.id}
+                                    currentBody={c.body}
+                                  />
+                                  <p className="mt-1 text-[11px] text-muted-foreground">
+                                    Editable for {editWindow.minutesLeft} more
+                                    minute{editWindow.minutesLeft === 1 ? "" : "s"}
+                                    {" "}(limit {PROGRESS.COMMENT_EDIT_WINDOW_MINUTES}).
+                                  </p>
+                                </>
+                              ) : (
+                                <p className="text-[11px] text-muted-foreground">
+                                  The {PROGRESS.COMMENT_EDIT_WINDOW_MINUTES}-minute edit
+                                  window has closed — this comment is now final. Post a
+                                  new comment instead.
+                                </p>
+                              )}
                             </div>
                           )}
                         </div>

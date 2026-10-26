@@ -1,6 +1,6 @@
 # Jomlink — Project Tracking Board
 
-**Updated:** 2026-10-15 · **Build status:** ✅ `npm run build` passes · `npx tsc --noEmit` passes · `eslint` clean · `npm test` 67 passing
+**Updated:** 2026-10-26 · **Build status:** ✅ `npm run build` passes (44 routes) · `npx tsc --noEmit` passes · `eslint` clean (0/0) · `npm test` 88 passing
 
 Single-page status view. Narrative detail lives in `00-project-plan.md` and the
 per-phase docs; this file answers *"where are we, what's next, what's blocking"*
@@ -43,6 +43,11 @@ at a glance. For a reverse-chronological *"what happened when"*, see
 
 **MVP is feature-complete.** Remaining work is production hardening (below).
 
+> 🧪 **Testing:** the manual test script is [`qa/QA-CHECKLIST.md`](./qa/QA-CHECKLIST.md) —
+> 20 sections covering every user-facing flow **plus UI/UX, public-page copy accuracy
+> and API/cron-endpoint security**, with a blueprint v1.2 traceability matrix and a
+> regression suite. Run it end-to-end before any release or pilot.
+
 > 🔴 **Legal blockers identified 2026-10-15** (see `legal-compliance-gaps.md`): the
 > government and investor opportunity categories are **only flagged, not disabled** in
 > code; payouts have **no AML/KYC gate**; and the biometric **purge job is missing**. The
@@ -62,8 +67,8 @@ at a glance. For a reverse-chronological *"what happened when"*, see
 
 | Migration | Needed for | Status |
 |-----------|-----------|--------|
-| `supabase/phase-12-extension-approval.sql` | Extension request/approval flow (§5.14) |  **APPLIED** — run it in Supabase → SQL Editor |
-| `supabase/phase-payout-request.sql` | Bank withdrawal requests (member bank details, `WITHDRAWAL` transaction type, payout-request columns) |
+| `supabase/phase-12-extension-approval.sql` | Extension request/approval flow (§5.14) | ✅ **APPLIED** |
+| `supabase/phase-payout-request.sql` | Bank withdrawal requests (member bank details, `WITHDRAWAL` transaction type, payout-request columns) | ⚠️ **VERIFY** — run it in Supabase → SQL Editor |
 | `supabase/phase-14-verification-gated-release.sql` | Verification-gated escrow release (Phase 14 — **built; enum values + 9 `connections` columns**) | ⚠️ **NOT APPLIED** — run it in Supabase → SQL Editor |
 
 > ⚠️ **The extension UI will error until this is applied.** The code queries
@@ -124,11 +129,14 @@ Ordered by risk to the pilot, not by effort.
 | 4 | Live payment gateway | 🟡 Medium | ToyyibPay is sandbox-only; production keys + webhook tunnel still needed. |
 | 5 | **Match score trusts self-declared relationships** | 🟡 Medium | A member can claim any relationship and collect up to 26 points. `relationship_verifications` exists in Prisma for exactly this and is unbuilt. Scoring is a signal, not a gate. |
 | 6 | KYC hardening | 🟡 Medium | Status + badge + document upload + admin review exist. No liveness/selfie check, no document expiry, no automated provider. |
-| 7 | Test coverage is **pure logic only** | 🟡 Medium | `vitest` now covers `status.ts`, `notification-links.ts`, the extension decision table and the new deadline-warning predicates — **67 tests across 5 files**. Still no DB/action/integration coverage, so the bug class that needs a request context (missing action guards, wrong value reaching escrow) is only catchable by using the app. |
+| 7 | Test coverage is **pure logic only** | 🟡 Medium | `vitest` covers `status.ts`, `verification.ts`, `extensions.ts`, `negotiation.ts`, `deadline-warnings.ts`, `notification-links.ts` — **88 tests across 6 files**. Still no DB/action/integration coverage, so the bug class that needs a request context (missing action guards, wrong value reaching escrow) is only catchable by using the app. The **manual QA checklist** (`docs/qa/QA-CHECKLIST.md`, 20 sections, ~250 rows) now covers those gaps, including **UI/UX**, **public-page copy accuracy** and **API/cron endpoint security**. |
 | 8 | No admin evidence queue | ⚪ Low | Only needed if evidence moderation is actually wanted. Would require an `evidence:write` permission, an `/admin/evidence` page and a review action. The `approved` column is reserved for this. |
 | 9 | Fraud / risk scoring | ⚪ Low | Repeated yellow flags are already recorded and can feed an engine. |
 | 10 | Business accounts, multi-country, multi-currency | ⚪ Low | Architecture-ready, not built. |
 | 11 | **Bank payouts are admin-settled (no real transfer)** | 🟡 Medium | A member requests a withdrawal and an admin marks it `PAID`; the ledger movement is recorded but **no money actually leaves Jomlink** — there is no bank/FPX disbursement integration (same stubbed-gateway situation as top-ups). A production pilot needs a payout API (e.g. a Malaysian disbursement provider) or a documented manual bank-transfer operating procedure. Also: no minimum withdrawal amount, no member-facing cancel of a pending request, and `payouts.method` is free text. |
+| 12 | **Landing search box is non-functional** | 🟡 Medium | `src/app/page.tsx` search strip is a `<form>` with **no `action`**, **no `name`** on the input and **no handler** — “Search Marketplace” does nothing. Fix: point it at `/marketplace` with `name="q"`. |
+| 13 | **Public copy contradicts Phase 14 + misrepresents inventory** | 🟡 Medium | `/how-it-works` still says “10% activation fee” and “fund it into escrow” at posting; `/fees` says the reward is released “the moment you mark it complete”. Neither matches the deposit-inside-at-post / confirm→verify→release model. The landing categories strip also shows **hard-coded** counts (“240+ Opportunities”) and promotes the **restricted** Investor/Government categories. See `docs/qa/QA-CHECKLIST.md` §14. |
+| 14 | **Sweep routes are open when `RECONCILE_SECRET` is unset** | 🟡 Medium | The four sweep/reconcile routes (`deadline-sweep`, `release-sweep`, `verification-sweep`, `toyyibpay/reconcile`) only check `x-reconcile-secret` **if the env var is set**; an unconfigured environment leaves them publicly callable. The sweeps are idempotent, but they should **fail closed** in production. QA row 16.4. |
 
 ---
 

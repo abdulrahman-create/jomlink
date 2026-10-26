@@ -56,6 +56,19 @@ export const COMPLETION = {
   MIN_HOURS_AFTER_DEADLINE: 24,
 } as const;
 
+/**
+ * Progress-thread comment edits (blueprint §5.6.2).
+ *
+ * A member may change their own comment only inside this short window, so the
+ * thread stays an honest contemporaneous record: you can fix a typo or finish a
+ * thought you sent too early, but you cannot quietly rewrite your position days
+ * later. Every edit still preserves the previous version as immutable update
+ * history regardless of when it happens.
+ */
+export const PROGRESS = {
+  COMMENT_EDIT_WINDOW_MINUTES: 15,
+} as const;
+
 /** Wallet top-up limits (MYR). */
 export const WALLET = {
   TOPUP_MIN: 10,
@@ -70,7 +83,12 @@ export const WALLET = {
  */
 export const BIOMETRIC_CONSENT_VERSION = "v1";
 
-/** Opportunity categories surfaced in the marketplace UI. */
+/**
+ * Opportunity categories surfaced in the marketplace UI and the post form.
+ *
+ * Single source of truth — the landing page derives its category strip from this
+ * list so the public vocabulary can never drift from what the form accepts.
+ */
 export const OPPORTUNITY_CATEGORIES = [
   { value: "BUSINESS_INTRODUCTION", label: "Business Introduction" },
   { value: "EXECUTIVE_MEETING", label: "Executive / Decision-Maker Meeting" },
@@ -84,6 +102,26 @@ export const OPPORTUNITY_CATEGORIES = [
   { value: "SITE_VISIT_ACCESS", label: "Site Visit / Access" },
   { value: "OTHER", label: "Other" },
 ] as const;
+
+/**
+ * Categories that must not be advertised as browsable on PUBLIC surfaces
+ * (landing page, marketing copy).
+ *
+ * Blueprint v1.2 §11.9.1 classifies these as regulated / high-risk and requires
+ * them to be disabled by default; §11.9.1 rule 5 adds that "disabled" must not
+ * be presented as a normal product. Phase 15 adds the server-side deny-list;
+ * until then this list keeps the marketing surface honest and is the correct
+ * place for the eventual deny-list to read from.
+ */
+export const NON_PUBLIC_CATEGORY_VALUES = [
+  "GOVERNMENT_PUBLIC_SECTOR",
+  "INVESTOR_CONNECTION",
+] as const;
+
+/** Opportunity categories that may be promoted on public, unauthenticated pages. */
+export const PUBLIC_OPPORTUNITY_CATEGORIES = OPPORTUNITY_CATEGORIES.filter(
+  (c) => !(NON_PUBLIC_CATEGORY_VALUES as readonly string[]).includes(c.value)
+);
 
 /** Relationship categories for relationship declarations. */
 export const RELATIONSHIP_CATEGORIES = [

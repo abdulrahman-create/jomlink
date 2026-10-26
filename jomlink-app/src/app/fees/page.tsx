@@ -4,7 +4,7 @@ import { FEES, formatMYR } from "@/lib/constants";
 export const metadata = {
   title: "Fees & Pricing · Jomlink",
   description:
-    "Transparent Jomlink fees: a refundable 10% posting deposit (less a RM10 listing fee on cancellation), full reward settlement on Linker acceptance, a 10% Linker service fee, immediate reward release on completion with a 7-day safety net, and free bank withdrawals. No hidden charges.",
+    "Transparent Jomlink fees: a refundable 10% posting deposit (less a RM10 listing fee on cancellation), full reward settlement on Linker acceptance, a 10% Linker service fee, verification-gated reward release with a 7-day safety net, and free bank withdrawals. No hidden charges.",
 };
 
 export default function FeesPage() {
@@ -51,8 +51,8 @@ export default function FeesPage() {
           when you post. It is only settled when you{" "}
           <strong className="text-foreground">accept a Linker&apos;s submission</strong>.
           At that point your wallet must hold the full agreed reward, which is then held
-          in escrow until the connection is verified complete — and released to the
-          Linker the moment you mark it complete.
+          in escrow until the connection is verified complete. The Seeker confirms the
+          work, Jomlink verifies it, and only then is the reward released to the Linker.
         </p>
         <p className="text-sm">
           A {formatMYR(1000)} reward requires {formatMYR(1000)} in wallet credit at the
@@ -75,12 +75,13 @@ export default function FeesPage() {
 
       <InfoSection title="Escrow and release">
         <p>
-          Rewards are held in escrow and released to the Linker{" "}
-          <strong className="text-foreground">immediately</strong> when you mark the
-          connection complete. There is no waiting period before payment.
+          Completion is verified, not self-certified. The Linker submits evidence, the
+          Seeker <strong className="text-foreground">confirms</strong> it, and Jomlink
+          then <strong className="text-foreground">verifies</strong> the completion
+          before releasing the reward to the Linker. No single party controls payment.
         </p>
         <p className="text-sm">
-          As a safety net, if a completed connection is not released the platform pays
+          As a safety net, if a verified connection is not released the platform pays
           it out automatically after {FEES.RELEASE_WAIT_DAYS} days. This window also
           gives both parties time to raise a dispute, which freezes the escrow before
           funds move.

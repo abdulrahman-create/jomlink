@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { requireCronAuth } from "@/lib/cron-auth";
 import { listDeadlinesApproaching } from "@/lib/queries";
 import {
   deadlineProximity,
@@ -18,8 +19,8 @@ import {
  *        https://app/api/connections/deadline-sweep
  *
  * Auth: when RECONCILE_SECRET is set, the `x-reconcile-secret` header must match.
- * When it is unset (local dev), the endpoint is open — matching the payments
- * reconcile route.
+ * When it is NOT set the route fails closed in production (503) and stays open
+ * only in local dev — see `src/lib/cron-auth.ts`.
  *
  * De-duplication: warnings are not persisted as their own table, so this route
  * takes a light approach — it only emits ONE warning per connection per level
@@ -27,13 +28,8 @@ import {
  * spamming. Members only ever see the newest unread nudge on their dashboard.
  */
 export async function GET(request: NextRequest) {
-  const secret = process.env.RECONCILE_SECRET;
-  if (secret) {
-    const provided = request.headers.get("x-reconcile-secret");
-    if (provided !== secret) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-    }
-  }
+  const denied = requireCronAuth(request, "deadline-sweep");
+  if (denied) return denied;
 
   let approaching;
   try {

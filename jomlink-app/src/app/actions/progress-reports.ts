@@ -16,6 +16,8 @@ import {
   updateProgressComment,
 } from "@/lib/queries";
 import { CONNECTION_CLOSED_STATUSES } from "@/lib/status";
+import { PROGRESS } from "@/lib/constants";
+import { commentEditWindow } from "@/lib/progress-window";
 
 export type ProgressState = {
   error?: string;
@@ -208,10 +210,17 @@ export async function postProgressCommentAction(
 /**
  * Edit an existing comment (§5.6.2).
  *
- * Both the Linker and the Seeker may edit THEIR OWN comment — but the previous
- * version is preserved as update history first. Nothing a party previously wrote
- * is ever destroyed, so a dispute (§9.11.1) can be resolved on what was actually
- * claimed and when, including any change of position between versions.
+ * Two rules govern this, and both are enforced here on the server because the
+ * UI is advisory only:
+ *
+ *   1. WINDOW — you may edit YOUR OWN comment only within
+ *      `PROGRESS.COMMENT_EDIT_WINDOW_MINUTES` (15) of posting it. The clock runs
+ *      from `created_at`, so repeated edits cannot extend it. After the window
+ *      the comment is final; the party must post a new comment instead.
+ *   2. HISTORY — the previous version is preserved as update history before the
+ *      new one lands. Nothing a party previously wrote is ever destroyed, so a
+ *      dispute (§9.11.1) can be resolved on what was actually claimed and when,
+ *      including any change of position between versions.
  */
 export async function editProgressCommentAction(
   prevState: ProgressState | undefined,
@@ -226,6 +235,17 @@ export async function editProgressCommentAction(
 
   if (comment.author_id !== user.id) {
     return { error: "You can only edit your own comment." };
+  }
+
+  // Rule 1 — the edit window. Checked BEFORE touching the DB so an expired
+  // edit can never leave a stray revision row behind.
+  const window = commentEditWindow(comment.created_at);
+  if (!window.canEdit) {
+    return {
+      error:
+        window.reason ??
+        `Comments can only be edited within ${PROGRESS.COMMENT_EDIT_WINDOW_MINUTES} minutes of posting.`,
+    };
   }
 
   const report = await getProgressReportById(comment.report_id);

@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { requireCronAuth } from "@/lib/cron-auth";
 import { getPendingTopUpTransactions } from "@/lib/queries";
 import { settleTopUp } from "@/lib/payments";
 
@@ -14,16 +15,12 @@ import { settleTopUp } from "@/lib/payments";
  *   curl -H "x-reconcile-secret: $RECONCILE_SECRET" https://app/api/payments/toyyibpay/reconcile
  *
  * Auth: when RECONCILE_SECRET is set, the `x-reconcile-secret` header must match.
- * When it is unset (local dev), the endpoint is open.
+ * When it is NOT set the route fails closed in production (503) and stays open
+ * only in local dev — see `src/lib/cron-auth.ts`.
  */
 export async function GET(request: NextRequest) {
-  const secret = process.env.RECONCILE_SECRET;
-  if (secret) {
-    const provided = request.headers.get("x-reconcile-secret");
-    if (provided !== secret) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-    }
-  }
+  const denied = requireCronAuth(request, "toyyibpay-reconcile");
+  if (denied) return denied;
 
   let pending;
   try {

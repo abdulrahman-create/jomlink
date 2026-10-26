@@ -26,19 +26,21 @@ import { Badge } from "@/components/ui/badge";
 import { PageBackground } from "@/components/page-background";
 import { SiteHeaderWithUser } from "@/components/site-header-with-user";
 import { SiteFooter } from "@/components/site-footer";
+import { PUBLIC_OPPORTUNITY_CATEGORIES } from "@/lib/constants";
 
 /* ------------------------------------------------------------------ */
 /* Blueprint-backed content                                            */
 /* ------------------------------------------------------------------ */
 
-const CATEGORY_PREVIEWS = [
-  { label: "Executive / Decision-Maker", count: "240+ Opportunities" },
-  { label: "Investor Connection", count: "180+ Opportunities" },
-  { label: "Business Introduction", count: "320+ Opportunities" },
-  { label: "Supplier Connection", count: "150+ Opportunities" },
-  { label: "Government / Public Sector", count: "40+ Opportunities" },
-  { label: "Strategic Partner", count: "120+ Opportunities" },
-];
+// Derived from the shared category list so the public vocabulary can never
+// drift from what the post form accepts. Compliance-restricted categories
+// (government / investor — blueprint §11.9.1) are excluded: they are not
+// products we may advertise. No counts here — the landing page is public and
+// must not invent inventory it cannot verify against the marketplace.
+const CATEGORY_PREVIEWS = PUBLIC_OPPORTUNITY_CATEGORIES.map((c) => ({
+  label: c.label,
+  href: `/marketplace?category=${encodeURIComponent(c.value)}`,
+}));
 
 // Lucide icons map 1:1 to each category for consistent structural glyphs.
 const CATEGORY_ICONS = [Users, CircleDollarSign, Handshake, Factory, Landmark, Network];
@@ -270,11 +272,19 @@ export default function HomePage() {
         {/* SEARCH STRIP */}
         <section className="border-y border-border bg-card/20 backdrop-blur-sm">
           <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-            <form className="flex flex-col gap-3 md:flex-row md:items-center">
+            {/* A GET form is deliberate: it works without JS and lands on the
+                marketplace with the `q` query param the page already reads. */}
+            <form
+              action="/marketplace"
+              method="get"
+              role="search"
+              className="flex flex-col gap-3 md:flex-row md:items-center"
+            >
               <div className="relative flex-1">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
                 <input
                   type="search"
+                  name="q"
                   placeholder="Search for a company, executive or opportunity..."
                   className="h-11 w-full rounded-lg border border-border bg-input pl-10 pr-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
                   aria-label="Search opportunities"
@@ -386,7 +396,7 @@ export default function HomePage() {
                 return (
                   <Link
                     key={c.label}
-                    href={`/marketplace?category=${encodeURIComponent(c.label)}`}
+                    href={c.href}
                     className="group flex items-center gap-4 rounded-xl border border-border bg-card p-5 transition-all hover:border-primary hover:shadow-[var(--shadow-glow)]"
                   >
                     <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-primary transition-colors group-hover:bg-primary group-hover:text-white">
@@ -396,7 +406,7 @@ export default function HomePage() {
                       <p className="truncate font-semibold text-foreground group-hover:text-primary">
                         {c.label}
                       </p>
-                      <p className="text-sm text-muted-foreground">{c.count}</p>
+                      <p className="text-sm text-muted-foreground">Browse live listings</p>
                     </div>
                     <ChevronRight
                       className="ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5"

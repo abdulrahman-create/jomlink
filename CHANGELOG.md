@@ -10,6 +10,76 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates are ISO
 
 ---
 
+## [Fixed] — 2026-10-26 · QA run — 6 defects found and fixed
+
+> Ran `jomlink-app/docs/qa/QA-CHECKLIST.md` (v2, 20 sections) against the code and
+> a live dev server. Six real defects found; all fixed and re-verified. The
+> Phase 15 compliance gaps were re-confirmed as still-open (expected-fail, not
+> regressions).
+
+### Fixed
+- **Landing search box was dead** (BUG-001, checklist 4.19) — `src/app/page.tsx`
+  search `<form>` had no `action`, the input had no `name`, and nothing handled
+  submit, so "Search Marketplace" did nothing. Now a plain
+  `action="/marketplace" method="get" role="search"` form with `name="q"` —
+  works without JS and lands on the marketplace with the term applied.
+- **Landing advertised fake inventory and compliance-restricted categories**
+  (BUG-002, 14.3/14.4) — hard-coded "240+/180+/320+ Opportunities" counts removed,
+  and `Investor Connection` / `Government / Public Sector` (disabled by default
+  under blueprint §11.9.1) no longer promoted. `src/lib/constants.ts` gained
+  `NON_PUBLIC_CATEGORY_VALUES` + `PUBLIC_OPPORTUNITY_CATEGORIES`, and the strip
+  now derives from the shared category list so it cannot drift from the form.
+- **Category deep-links filtered on the wrong key** (BUG-006, 4.18) — landing
+  cards built `?category=` from the display **label**, but `/marketplace` filters
+  on the enum **value**, so the filter never applied. Cards now emit the value.
+- **Public copy contradicted Phase 14** (BUG-003, 14.5/14.6) — `/how-it-works`
+  still said "fund it into escrow" at posting with a "10% activation fee", and
+  `/fees` said the reward is released "the moment you mark it complete". Both
+  rewritten to the real model: 10% refundable deposit at post (RM10 listing fee
+  inside), reward escrowed on accepting a Linker, then **Seeker confirms →
+  platform verifies → platform releases**.
+- **Cron/sweep routes were publicly callable when unauthenticated** (BUG-005,
+  16.4) — the four `x-reconcile-secret` routes only checked the header *if*
+  `RECONCILE_SECRET` was set, so an unconfigured production env exposed
+  money-moving sweeps. New `src/lib/cron-auth.ts` (`requireCronAuth`): 401 on
+  mismatch, **503 in production when the secret is unset**, constant-time
+  compare, no secret echo. `cron-auth.test.ts` adds 7 tests.
+- **Footer brand typo** (BUG-004) — "introducions" → "introductions" on every page.
+
+### Changed
+- `src/app/actions/negotiations.ts` — fixed a mis-indented block in
+  `counterOfferAction` (behaviour unchanged).
+
+### Fixed (follow-up, same day)
+- **Progress comments could be edited forever** (BUG-007, checklist 7.28) —
+  blueprint §5.6.2 requires edits to keep full revision history *and* to be
+  allowed only within 15 minutes of posting. Revision history was already
+  modelled correctly (`progress_report_comment_revisions`), but the 15-minute
+  limit was missing, so a party could silently rewrite their position days
+  later and the thread was not an honest contemporaneous record. Added
+  `PROGRESS.COMMENT_EDIT_WINDOW_MINUTES = 15` (`constants.ts`), a pure
+  `src/lib/progress-window.ts` (`commentEditWindow` / `isWithinCommentEditWindow`),
+  server enforcement in `editProgressCommentAction` **before** any DB write, and
+  UI that hides Edit once the window closes and explains why. The clock runs
+  from `created_at`, so re-editing cannot extend it. `progress-window.test.ts`
+  adds 9 tests. §5.6.2 is now **Built**, not Partial.
+
+### Verified
+- `npx tsc --noEmit` clean · `npm run lint` clean (0 errors / 0 warnings) ·
+  `npm test` **95 passing / 7 files** (was 88/6) · `npm run build` **44 routes**.
+- Live: landing search → `/marketplace?q=investor`; category cards emit enum
+  values with no fake counts and neither restricted category; `/fees` and
+  `/how-it-works` free of stale pre-Phase-14 wording; the four sweep routes
+  return 200 in local dev (open by design) and are covered for the production
+  fail-closed path by unit tests.
+
+### Still open (Phase 15 — expected-fail, see `docs/phase-15-compliance-hardening.md`)
+AML/sanctions screen + KYC-before-payout · server-side category deny-list ·
+biometric purge job · separated training consent · progress-comment edit history ·
+atomic single-winner selection · versioned terms acceptance.
+
+---
+
 ## [Built] — 2026-10-15 · Phase 14 — verification-gated escrow release
 
 > **Built the fix for the money-path loophole specced earlier today** (see the
