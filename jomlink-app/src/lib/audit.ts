@@ -34,6 +34,13 @@ export const AUDIT_ACTIONS = {
   // Dev/test only: the member self-verified through the KYC bypass. Never
   // reachable in production (see lib/kyc-dev-bypass.ts).
   KYC_DEV_VERIFIED: "KYC_DEV_VERIFIED",
+  // §11.11 — biometric retention/purge + the separate model-training consent.
+  // BIOMETRIC_PURGE_RUN is written by the scheduled job on every run (even a
+  // no-op run), so retention is demonstrably enforced rather than assumed.
+  BIOMETRIC_PURGE_RUN: "BIOMETRIC_PURGE_RUN",
+  BIOMETRIC_TRAINING_CONSENT_GRANTED: "BIOMETRIC_TRAINING_CONSENT_GRANTED",
+  BIOMETRIC_TRAINING_CONSENT_WITHDRAWN: "BIOMETRIC_TRAINING_CONSENT_WITHDRAWN",
+  BIOMETRIC_PURGE_REQUESTED: "BIOMETRIC_PURGE_REQUESTED",
   RELATIONSHIP_VERIFIED: "RELATIONSHIP_VERIFIED",
   RELATIONSHIP_REJECTED: "RELATIONSHIP_REJECTED",
   // Disputes

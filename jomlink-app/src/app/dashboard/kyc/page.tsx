@@ -1,9 +1,14 @@
 import { getCurrentUser } from "@/lib/auth";
-import { getKycRecordsByUser, getKycBiometricsByUser } from "@/lib/queries";
+import {
+  getKycRecordsByUser,
+  getKycBiometricsByUser,
+  getTrainingConsentState,
+} from "@/lib/queries";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ShieldCheck, Clock, CheckCircle2, XCircle, ScanFace, FlaskConical } from "lucide-react";
-import { formatDate } from "@/lib/constants";
+import { ShieldCheck, Clock, CheckCircle2, XCircle, ScanFace, FlaskConical, Sparkles } from "lucide-react";
+import { formatDate, BIOMETRIC_RETENTION } from "@/lib/constants";
+import { trainingConsentStatus } from "@/lib/biometric-purge";
 import { kycDevBypassNotice, kycDevBypassState } from "@/lib/kyc-dev-bypass";
 import { KycForm } from "./kyc-form";
 import { BiometricKycForm } from "./biometric-form";
@@ -26,6 +31,9 @@ export default async function KycPage() {
 
   const records = await getKycRecordsByUser(user.id);
   const biometrics = await getKycBiometricsByUser(user.id);
+  // §11.11 — training consent is a SEPARATE purpose from KYC consent.
+  const consentState = await getTrainingConsentState(user.id);
+  const trainingState = trainingConsentStatus(consentState);
   const latest = records[0] ?? null;
   const isVerified = user.profile?.verifiedBadge === true;
   // Dev/test only. `enabled` is false in production by construction.
@@ -131,13 +139,63 @@ export default async function KycPage() {
             Help build automated verification
           </CardTitle>
           <CardDescription>
-            Capture a live face photo and your ID together. This opt-in dataset lets us train
-            our own face-match model — so future verification is instant instead of manual.
-            Your images are stored privately and are never shown publicly.
+            Capture a live face photo and your ID together, so future verification can be
+            instant instead of manual. Your images are stored privately and are never
+            shown publicly. Using them to train a model is a separate, optional choice
+            you make below.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <BiometricKycForm />
+          {/* §11.11 — the two purposes are shown separately so a member can see
+              exactly what they agreed to, and revoke only the secondary one. */}
+          {consentState.columnsReady ? (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="rounded-md border border-border bg-muted/30 p-3">
+                <p className="text-xs font-semibold text-muted-foreground">
+                  Identity verification consent
+                </p>
+                <p className="mt-1 flex items-center gap-2 text-sm text-foreground">
+                  <ShieldCheck className="h-4 w-4 text-primary" aria-hidden="true" />
+                  {consentState.biometricConsent ? "Given" : "Not given"}
+                </p>
+              </div>
+              <div className="rounded-md border border-border bg-muted/30 p-3">
+                <p className="text-xs font-semibold text-muted-foreground">
+                  Model-training consent (optional)
+                </p>
+                <p className="mt-1 flex items-center gap-2 text-sm text-foreground">
+                  <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
+                  <Badge
+                    variant={
+                      trainingState.tone === "active"
+                        ? "success"
+                        : trainingState.tone === "withdrawn"
+                          ? "warning"
+                          : "outline"
+                    }
+                  >
+                    {trainingState.label}
+                  </Badge>
+                </p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Only captures made while this is granted are used to train a model.
+                  Identity images expire after {BIOMETRIC_RETENTION.KYC_RETENTION_DAYS} days.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <p className="rounded-md border border-warning/40 bg-warning-bg px-3 py-2 text-xs text-warning">
+              The separate model-training consent is unavailable until
+              <code className="mx-1">supabase/phase-15-biometric-purge-consent.sql</code>
+              is applied. Your identity captures still work; they are treated as
+              verification-only.
+            </p>
+          )}
+
+          <BiometricKycForm
+            trainingConsentActive={trainingState.tone === "active"}
+            trainingConsentAvailable={consentState.columnsReady}
+          />
 
           {biometrics.length > 0 && (
             <div className="rounded-md border border-border bg-muted/40 p-3">
@@ -149,11 +207,18 @@ export default async function KycPage() {
                   <li key={b.id} className="flex items-center justify-between gap-3">
                     <span>
                       Captured {formatDate(b.created_at)}
-                      {b.purge_requested_at ? " · deletion requested" : ""}
+                      {b.purge_requested_at ? " · deletion scheduled" : ""}
                     </span>
-                    <Badge variant="outline">
-                      {b.label_status.replace(/_/g, " ").toLowerCase()}
-                    </Badge>
+                    <span className="flex items-center gap-2">
+                      <Badge variant="outline">
+                        {b.training_consent_granted
+                          ? "training-eligible"
+                          : "verification only"}
+                      </Badge>
+                      <Badge variant="outline">
+                        {b.label_status.replace(/_/g, " ").toLowerCase()}
+                      </Badge>
+                    </span>
                   </li>
                 ))}
               </ul>

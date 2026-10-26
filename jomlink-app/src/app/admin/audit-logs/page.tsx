@@ -59,6 +59,22 @@ export default async function AdminAuditLogsPage({
               <option value="DISPUTE_RAISED">Dispute Raised</option>
               <option value="DISPUTE_UNDER_REVIEW">Dispute Under Review</option>
               <option value="DISPUTE_RESOLVED">Dispute Resolved</option>
+              {/* §11.11 — biometric retention/purge + secondary-purpose consent */}
+              <option value="BIOMETRIC_PURGE_RUN">Biometric Purge Run</option>
+              <option value="BIOMETRIC_PURGE_REQUESTED">Biometric Purge Requested</option>
+              <option value="BIOMETRIC_TRAINING_CONSENT_GRANTED">Training Consent Granted</option>
+              <option value="BIOMETRIC_TRAINING_CONSENT_WITHDRAWN">Training Consent Withdrawn</option>
+              <option value="KYC_DEV_VERIFIED">KYC Dev Verified</option>
+              {/* §11.9.1 / §11.9.2 / §5.12.1 */}
+              <option value="OPPORTUNITY_CATEGORY_BLOCKED">Category Blocked</option>
+              <option value="PAYOUT_REQUESTED">Payout Requested</option>
+              <option value="PAYOUT_PAID">Payout Paid</option>
+              <option value="PAYOUT_SCREEN_RECORDED">Payout Screened</option>
+              <option value="PAYOUT_SCREEN_BLOCKED">Payout Blocked</option>
+              <option value="PAYOUT_COMPLIANCE_CLEARED">Payout Cleared</option>
+              <option value="CLAWBACK_OPENED">Clawback Opened</option>
+              <option value="CLAWBACK_RECOVERED">Clawback Recovered</option>
+              <option value="CLAWBACK_CLOSED">Clawback Closed</option>
             </select>
 
             <select
@@ -70,6 +86,7 @@ export default async function AdminAuditLogsPage({
               <option value="USER">User / Member</option>
               <option value="OPPORTUNITY">Opportunity</option>
               <option value="KYC_RECORD">KYC Record</option>
+              <option value="KYC_BIOMETRIC">Biometric Capture</option>
               <option value="RELATIONSHIP">Relationship</option>
               <option value="DISPUTE">Dispute</option>
             </select>

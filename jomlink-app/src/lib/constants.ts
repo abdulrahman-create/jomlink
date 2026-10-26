@@ -130,8 +130,51 @@ export const AML = {
 /**
  * KYC biometric consent wording version. Bump this whenever the consent copy
  * changes so we retain which wording each member agreed to (see docs).
+ *
+ * This is the **identity-verification** purpose (primary purpose): storing the
+ * face + ID images so Jomlink can confirm who the member is. It is deliberately
+ * SEPARATE from the model-training consent below (blueprint v1.2 §11.11 —
+ * secondary use needs its own freely-given, specific consent).
  */
-export const BIOMETRIC_CONSENT_VERSION = "v1";
+export const BIOMETRIC_CONSENT_VERSION = "v2";
+
+/**
+ * Model-training (secondary purpose) consent wording version — blueprint v1.2
+ * §11.11.
+ *
+ * Using KYC captures to train an in-house face-match model is a **separate
+ * purpose**. §11.11 is explicit that "a single bundled KYC consent is not
+ * sufficient". A member can therefore:
+ *   • refuse training and still verify their identity, and
+ *   • withdraw training consent at any time without losing a verified badge.
+ *
+ * A capture is only eligible as training data when BOTH consents were granted
+ * and were not withdrawn (`training_consent_withdrawn_at`).
+ */
+export const BIOMETRIC_TRAINING_CONSENT_VERSION = "v1";
+
+/**
+ * Biometric retention + purge policy (blueprint v1.2 §11.11, PRIV-01).
+ *
+ * §11.11 makes the purge job **mandatory**: `purge_requested_at` rows must
+ * actually be deleted by a scheduled job, not merely flagged. Retention periods
+ * exist alongside it so data we are no longer allowed to keep is removed even
+ * when nobody asked.
+ */
+export const BIOMETRIC_RETENTION = {
+  /**
+   * Hard retention cap for identity images (days, from capture). KYC images are
+   * kept no longer than this unless a documented legal hold applies.
+   */
+  KYC_RETENTION_DAYS: 365,
+  /**
+   * Retention cap for captures that were granted for model training (days).
+   * Training sets are refreshed, so they need a shorter review cycle.
+   */
+  TRAINING_RETENTION_DAYS: 730,
+  /** Max rows handled per purge run, so a cron run stays bounded. */
+  PURGE_BATCH_SIZE: 200,
+} as const;
 
 /**
  * Opportunity categories surfaced in the marketplace UI and the post form.

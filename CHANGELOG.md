@@ -10,6 +10,70 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates are ISO
 
 ---
 
+## [Built] — 2026-10-26 · §11.11 biometric purge + separate model-training consent
+
+Blueprint v1.2 §11.11 makes two biometric obligations **launch blockers**. Both
+were missing: `purge_requested_at` was **flag-only** — nothing ever deleted the
+row or the face/ID objects, so a member's deletion request was silently ignored
+forever — and a single checkbox bundled identity verification with model
+training, which §11.11 states explicitly is *not sufficient* for a secondary
+purpose.
+
+### Added
+- `src/lib/biometric-purge.ts` (pure) — `planBiometricPurge()` decides what a run
+  must delete (purge request → retention expiry → keep) and which object paths to
+  remove; `isEligibleForTraining()`; `trainingConsentStatus()`.
+- `src/lib/biometric-purge-job.ts` — `runBiometricPurge()`: removes the
+  private-bucket objects **first**, then the rows (if storage fails the rows are
+  **retained**, so the image is never orphaned with nothing pointing at it), then
+  writes a `BIOMETRIC_PURGE_RUN` audit entry on **every** run — including a run
+  that deleted nothing, so "we deleted nothing" is provable.
+- `GET /api/admin/biometrics/purge` — cron entrypoint, same `x-reconcile-secret`
+  gate as the money sweeps (401 on mismatch, 503 in production when unset).
+- `BIOMETRIC_RETENTION` (`constants.ts`) — 365-day identity retention, 730-day
+  training retention, 200-row batch cap. Captures past the cap are deleted even
+  when nobody asked.
+- `BIOMETRIC_TRAINING_CONSENT_VERSION` — the secondary-purpose consent has its
+  **own** version, independent of `BIOMETRIC_CONSENT_VERSION` (now `v2`).
+- `users.training_consent / _at / _version / _withdrawn_at` and
+  `kyc_biometrics.training_consent_granted / _version` — per-capture purpose
+  marker, so a later withdrawal cannot retroactively "consent" old captures.
+- `withdrawTrainingConsentAction` — revokes **only** training; KYC images, the
+  verified badge and existing captures are untouched (audited).
+- `supabase/phase-15-biometric-purge-consent.sql` — idempotent migration.
+
+### Changed
+- The biometric consent step now shows **two** clearly separated blocks: identity
+  verification (required) and model training (**optional, unchecked by default**).
+  A consent-status panel shows both; each capture is badged
+  `training-eligible` / `verification only`. The admin biometrics tab shows the
+  same purpose marker.
+- Withdrawing all biometric consent and wiping data are now audited
+  (`BIOMETRIC_PURGE_REQUESTED`).
+- The admin audit-log filter gained the biometric actions **and** every newer
+  action that was missing (`PAYOUT_*`, `CLAWBACK_*`, `OPPORTUNITY_CATEGORY_BLOCKED`,
+  `KYC_DEV_VERIFIED`) plus the `KYC_BIOMETRIC` entity.
+
+### Fixed
+- **The Verification page crashed** when a not-yet-migrated column was queried
+  (`Runtime Error … 42703 column users.training_consent does not exist`) and the
+  wipe action returned **HTTP 500** (`PGRST204 … schema cache`). `isMissingColumnError`
+  now treats **both** codes as "migration missing"; the page warns, hides the
+  training opt-in and marks captures verification-only instead of failing. Found
+  by running the flow, not by the build. 6 tests.
+
+### Notes
+- `tsc` clean · lint 0/0 · **188 tests / 14 files** · build **45 routes**.
+- ✅ Live-verified: purge route auth (200 / 401 / 401), five no-op purge runs each
+  audited and filterable, the separate consent blocks render correctly at 375 px,
+  the page degrades safely with the migration unapplied.
+- ⏸ **Migration not yet applied** in this environment, so the deleted path is
+  proven by unit tests + a sandbox E2E that ran the real planner. **Remaining
+  limitation:** retention periods are code constants (not a versioned Compliance
+  schedule) and KYC documents in `kyc-documents` are not covered by this job.
+
+---
+
 ## [Added] — 2026-10-26 · Dev/test KYC bypass (`KYC_DEV_BYPASS`)
 
 The §11.9.2 KYC-before-payout gate blocks **every** withdrawal for an unverified

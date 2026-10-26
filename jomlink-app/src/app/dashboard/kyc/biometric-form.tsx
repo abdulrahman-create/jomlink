@@ -7,6 +7,7 @@ import {
   Loader2,
   RotateCcw,
   ShieldCheck,
+  Sparkles,
   Trash2,
   UploadCloud,
   UserCheck,
@@ -15,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import {
   submitKycBiometricAction,
   withdrawBiometricConsentAction,
+  withdrawTrainingConsentAction,
   wipeBiometricDataAction,
   type KycState,
 } from "@/app/actions/kyc";
@@ -92,7 +94,19 @@ async function detectFace(
   return { ok: avg > 40, confidence: Math.min(80, Math.round(avg)), box: { w: 0, h: 0 } };
 }
 
-export function BiometricKycForm() {
+export function BiometricKycForm({
+  trainingConsentActive = false,
+  trainingConsentAvailable = true,
+}: {
+  /** True when the member has an active model-training consent on file. */
+  trainingConsentActive?: boolean;
+  /**
+   * False when `phase-15-biometric-purge-consent.sql` has not been applied. The
+   * training opt-in is then hidden instead of offering a control that would fail
+   * to persist (the capture itself still works — it is verification-only).
+   */
+  trainingConsentAvailable?: boolean;
+}) {
   const [state, action, pending] = useActionState<KycState, FormData>(
     submitKycBiometricAction,
     initialState
@@ -107,6 +121,9 @@ export function BiometricKycForm() {
   const [idImage, setIdImage] = React.useState<Capture>(null);
   const [faceMeta, setFaceMeta] = React.useState<{ ok: boolean; confidence: number; box: { w: number; h: number } }>({ ok: false, confidence: 0, box: { w: 0, h: 0 } });
   const [consent, setConsent] = React.useState(false);
+  // Separate secondary-purpose consent (§11.11). Deliberately NOT pre-checked
+  // and not required — consent must be freely given, so it starts off.
+  const [trainingConsent, setTrainingConsent] = React.useState(false);
   const idInputRef = React.useRef<HTMLInputElement | null>(null);
 
   // Start/stop the camera.
@@ -293,27 +310,78 @@ export function BiometricKycForm() {
           </div>
         </div>
 
-        {/* Step 3 — consent */}
+        {/* Step 3 — consent. TWO separate purposes (§11.11): the KYC consent is
+            required, the model-training consent is a distinct voluntary opt-in. */}
         <div className="space-y-3 rounded-lg border border-border bg-muted/50 p-4">
           <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
             <ShieldCheck className="h-4 w-4 text-primary" aria-hidden="true" />
             3 · Your consent
           </p>
-          <label className="flex items-start gap-3 text-sm">
-            <input
-              type="checkbox"
-              name="consent"
-              checked={consent}
-              onChange={(e) => setConsent(e.target.checked)}
-              className="mt-1 h-4 w-4 accent-[var(--color-primary)]"
-            />
-            <span className="text-muted-foreground">
-              I consent to Jomlink storing my face photo and identity-document image to
-              (a) verify my identity and (b) build its own automated identity-verification
-              system. I understand these images are stored privately, are never shown
-              publicly, and that I can withdraw consent and delete my data at any time.
-            </span>
-          </label>
+
+          <div className="space-y-1">
+            <label className="flex items-start gap-3 text-sm">
+              <input
+                type="checkbox"
+                name="consent"
+                checked={consent}
+                onChange={(e) => setConsent(e.target.checked)}
+                required
+                aria-describedby="consent-purpose"
+                className="mt-1 h-4 w-4 accent-[var(--color-primary)]"
+              />
+              <span className="text-muted-foreground">
+                <span className="font-medium text-foreground">
+                  Identity verification (required)
+                </span>
+                <br />
+                <span id="consent-purpose">
+                  I consent to Jomlink storing my face photo and identity-document
+                  image to verify my identity. I understand these images are stored
+                  privately, are never shown publicly, and that I can withdraw
+                  consent and delete my data at any time.
+                </span>
+              </span>
+            </label>
+          </div>
+
+          <div className="space-y-1 border-t border-border pt-3">
+            <label className="flex items-start gap-3 text-sm">
+              <input
+                type="checkbox"
+                name="trainingConsent"
+                checked={trainingConsent && trainingConsentAvailable}
+                disabled={!trainingConsentAvailable}
+                onChange={(e) => setTrainingConsent(e.target.checked)}
+                aria-describedby="training-purpose"
+                className="mt-1 h-4 w-4 accent-[var(--color-primary)] disabled:opacity-50"
+              />
+              <span className="text-muted-foreground">
+                <span className="flex items-center gap-1.5 font-medium text-foreground">
+                  <Sparkles className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                  Model training (optional)
+                </span>
+                <br />
+                <span id="training-purpose">
+                  I also consent to Jomlink using this capture to train its own
+                  automated face-matching model. This is a separate purpose and is
+                  entirely optional — leaving it unticked does not affect your
+                  verification. I can withdraw this permission at any time without
+                  losing my verified badge.
+                </span>
+              </span>
+            </label>
+            {!trainingConsentAvailable && (
+              <p className="pl-7 text-xs text-warning">
+                Unavailable until the biometric consent migration has been applied.
+                This capture will be stored for verification only.
+              </p>
+            )}
+            {trainingConsentActive && (
+              <p className="pl-7 text-xs text-muted-foreground">
+                Training consent is currently <strong>active</strong> on your account.
+              </p>
+            )}
+          </div>
         </div>
 
         <Button
@@ -331,12 +399,19 @@ export function BiometricKycForm() {
       </form>
 
       {/* Data controls */}
-      <div className="flex flex-wrap gap-2 border-t border-border pt-4">
+      <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
         <form action={withdrawBiometricConsentAction}>
           <Button type="submit" variant="outline" size="sm">
             Withdraw consent
           </Button>
         </form>
+        {trainingConsentActive && trainingConsentAvailable && (
+          <form action={withdrawTrainingConsentAction}>
+            <Button type="submit" variant="outline" size="sm">
+              Withdraw training consent only
+            </Button>
+          </form>
+        )}
         <form action={wipeBiometricDataAction}>
           <Button type="submit" variant="outline" size="sm" className="text-destructive">
             <Trash2 className="h-4 w-4" aria-hidden="true" />
@@ -344,6 +419,11 @@ export function BiometricKycForm() {
           </Button>
         </form>
       </div>
+      <p className="text-xs text-muted-foreground">
+        Withdrawing consent or deleting your data removes the images from storage.
+        Deletions requested here are completed by the scheduled retention job, and
+        every capture also expires automatically under our retention policy.
+      </p>
     </div>
   );
 }

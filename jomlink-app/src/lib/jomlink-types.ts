@@ -21,6 +21,14 @@ export interface JomlinkUserRow {
   biometric_consent: boolean;
   biometric_consent_at: string | null;
   biometric_consent_version: string | null;
+  // ── Model-training (secondary purpose) consent, §11.11 ──────────────────
+  // Distinct from the KYC consent above: training is a separate purpose with its
+  // own freely-given, specific consent and lawful basis. Optional because the
+  // columns arrive with `phase-15-biometric-purge-consent.sql`.
+  training_consent?: boolean;
+  training_consent_at?: string | null;
+  training_consent_version?: string | null;
+  training_consent_withdrawn_at?: string | null;
   bank_name: string | null;
   bank_account_no: string | null;
   bank_account_name: string | null;
@@ -471,6 +479,13 @@ export interface KycBiometricRow {
   liveness_passed: boolean;
   consent_version: string;
   consented_at: string;
+  /**
+   * True only when the member ALSO granted the separate model-training consent
+   * (§11.11). A capture with `training_consent_granted = false` must never enter
+   * a training set, even though it is a valid identity capture.
+   */
+  training_consent_granted?: boolean;
+  training_consent_version?: string | null;
   label_status: BiometricLabelStatus;
   labelled_by: string | null;
   labelled_at: string | null;

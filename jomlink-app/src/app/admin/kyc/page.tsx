@@ -290,6 +290,17 @@ export default async function AdminKycPage({
                             {formatDate(b.created_at)}
                             {b.purge_requested_at ? " · PURGE REQUESTED" : ""}
                           </div>
+                          <div className="mt-1">
+                            {b.training_consent_granted ? (
+                              <Badge variant="outline" className="text-[10px]">
+                                Training consent
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[10px]">
+                                Verification only — not training data
+                              </Badge>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-3 text-xs">
                           <div className="flex flex-col gap-1">
@@ -368,7 +379,10 @@ export default async function AdminKycPage({
           <p className="text-xs text-muted-foreground">
             Data-collection pipeline only — no automated face matching runs today. Labels
             (MATCH / NO_MATCH / UNUSABLE) are the training ground-truth for the future model.
-            Purge-requested captures must be deleted by the retention job.
+            Only captures marked <strong>Training consent</strong> may be used for training;
+            everything else is verification-only (§11.11). PURGE REQUESTED captures, and
+            captures past the retention period, are deleted — objects and rows — by the
+            scheduled retention job (<code>/api/admin/biometrics/purge</code>).
           </p>
         </div>
       ) : (

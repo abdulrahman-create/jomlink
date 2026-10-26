@@ -39,7 +39,7 @@ at a glance. For a reverse-chronological *"what happened when"*, see
 | 12 | Lifecycle guards + notification deep-links + money path | ✅ Done | `phase-12-lifecycle-guards-and-money-path.md` |
 | 13 | Appointment notifications + track records + deadline warnings | ✅ Done | `phase-13-appointments-and-deadline-warnings.md` |
 | 14 | Verification-gated escrow release | ✅ Done  | `phase-14-verification-gated-release.md` |
-| 15 | Compliance hardening (category deny-list, AML/KYC-before-payout, biometric purge) | 🚧 In progress — §11.9.1 deny-list ✅ Built 2026-10-26; §11.9.2 AML/KYC gate ✅ Built 2026-10-26 (no provider yet); biometric purge + training consent outstanding | `phase-15-compliance-hardening.md` |
+| 15 | Compliance hardening (category deny-list, AML/KYC-before-payout, biometric purge) | 🚧 In progress — §11.9.1 deny-list ✅ Built 2026-10-26; §11.9.2 AML/KYC gate ✅ Built 2026-10-26 (no provider yet); §11.11 biometric purge + separate training consent ✅ Built 2026-10-26 (migration ⚠️ not applied); concurrent-selection guard + versioned terms outstanding | `phase-15-compliance-hardening.md` |
 
 **MVP is feature-complete.** Remaining work is production hardening (below).
 
@@ -73,7 +73,12 @@ at a glance. For a reverse-chronological *"what happened when"*, see
 > and records `providerConfigured: false`. Migration
 > `supabase/phase-15-aml-screening.sql` **needs applying**.
 >
-> The **biometric purge job** and **separate training consent** (§11.11) remain unbuilt.
+> The **biometric purge job** and **separate training consent** (§11.11) are ✅ **BUILT
+> 2026-10-26** — a scheduled job deletes the private-bucket objects **and** the rows for
+> purge-requested captures (and for anything past the 365/730-day retention caps), and
+> model training is now a separate, voluntary, per-capture consent. **Remaining:** the
+> retention periods are code constants rather than a versioned Compliance schedule, and
+> KYC identity documents in `kyc-documents` are not covered by that job.
 > `npm test` **153 passing / 11 files**.
 
 > ⚠️ **Phase 12 left one data issue unresolved by design** — a stale **RM 2,200
@@ -92,6 +97,7 @@ at a glance. For a reverse-chronological *"what happened when"*, see
 | `supabase/phase-12-extension-approval.sql` | Extension request/approval flow (§5.14) | ✅ **APPLIED** |
 | `supabase/phase-payout-request.sql` | Bank withdrawal requests (member bank details, `WITHDRAWAL` transaction type, payout-request columns) | ⚠️ **VERIFY** — run it in Supabase → SQL Editor |
 | `supabase/phase-14-verification-gated-release.sql` | Verification-gated escrow release (Phase 14 — **built; enum values + 9 `connections` columns**) | ⚠️ **NOT APPLIED** — run it in Supabase → SQL Editor |
+| `supabase/phase-15-biometric-purge-consent.sql` | §11.11 separate model-training consent (`users.training_consent*`, `kyc_biometrics.training_consent_granted`) + purge indexes | ⚠️ **NOT APPLIED** — until applied the training opt-in is hidden and captures are verification-only; the KYC page degrades instead of crashing |
 
 > ⚠️ **The extension UI will error until this is applied.** The code queries
 > `jomlink.connection_extensions`, which does not exist yet. PostgREST cannot run

@@ -2217,6 +2217,127 @@ export async function setBiometricConsent(
   if (error) throw error;
 }
 
+/**
+ * Record the SEPARATE model-training consent (§11.11 secondary purpose).
+ *
+ * Deliberately a separate column set from `biometric_consent` — granting KYC
+ * consent must never imply training consent, and withdrawing training consent
+ * must never revoke identity verification.
+ *
+ * `withdrawn_at` is stamped on withdrawal (and kept on a later re-grant, so the
+ * history of the gap is visible rather than erased).
+ */
+export async function setTrainingConsent(
+  userId: string,
+  consent: boolean,
+  version: string
+): Promise<void> {
+  const now = new Date().toISOString();
+  const patch: Record<string, unknown> = {
+    training_consent: consent,
+    training_consent_at: consent ? now : null,
+    training_consent_version: consent ? version : null,
+    updated_at: now,
+  };
+  if (!consent) patch.training_consent_withdrawn_at = now;
+  const { error } = await sc().from("users").update(patch).eq("id", userId);
+  if (error) {
+    // The consent columns may not exist yet (migration not applied). PostgREST
+    // reports this as either 42703 (undefined_column) or PGRST204 ("Could not
+    // find the 'x' column … in the schema cache"), depending on how it resolves
+    // the table. Degrade quietly in both cases: the caller keeps working and
+    // nothing is silently recorded as granted.
+    if (isMissingColumnError(error)) return;
+    throw error;
+  }
+}
+
+/**
+ * True when a PostgREST error means "this column does not exist" — i.e. the
+ * relevant migration has not been applied. Both codes are handled because the
+ * REST layer reports a missing column differently from the Postgres planner
+ * (PGRST204 from the schema cache, 42703 from the DB itself).
+ */
+export function isMissingColumnError(error: unknown): boolean {
+  const e = error as { code?: string; message?: string } | null;
+  if (!e) return false;
+  if (e.code === "42703" || e.code === "PGRST204") return true;
+  const msg = (e.message ?? "").toLowerCase();
+  return msg.includes("does not exist") || msg.includes("schema cache");
+}
+
+/**
+ * The member's training-consent state, for the UI and the eligibility check.
+ *
+ * `columnsReady: false` means `supabase/phase-15-biometric-purge-consent.sql`
+ * has not been applied yet. Callers must degrade (hide the consent panel) rather
+ * than crash the page — PostgREST returns 42703 for a missing column and an
+ * unhandled throw here would take down the whole `/dashboard/kyc` page.
+ */
+export async function getTrainingConsentState(userId: string): Promise<{
+  biometricConsent: boolean;
+  trainingConsent: boolean;
+  trainingConsentWithdrawnAt: string | null;
+  columnsReady: boolean;
+}> {
+  const { data, error } = await sc()
+    .from("users")
+    .select(
+      "biometric_consent, training_consent, training_consent_withdrawn_at"
+    )
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) {
+    // Missing column → migration not applied. Anything else is real.
+    if (isMissingColumnError(error)) {
+      return {
+        biometricConsent: false,
+        trainingConsent: false,
+        trainingConsentWithdrawnAt: null,
+        columnsReady: false,
+      };
+    }
+    throw error;
+  }
+  const row = (data ?? {}) as {
+    biometric_consent?: boolean | null;
+    training_consent?: boolean | null;
+    training_consent_withdrawn_at?: string | null;
+  };
+  return {
+    biometricConsent: row.biometric_consent === true,
+    trainingConsent: row.training_consent === true,
+    trainingConsentWithdrawnAt: row.training_consent_withdrawn_at ?? null,
+    columnsReady: true,
+  };
+}
+
+/**
+ * Every capture the retention/purge job must consider, oldest first.
+ *
+ * Deliberately unbounded on purpose filters: the planner (`planBiometricPurge`)
+ * applies the deletion rule and the batch cap, so the query stays a simple,
+ * index-friendly ordered scan.
+ */
+export async function listBiometricCapturesForPurge(
+  limit = 1000
+): Promise<KycBiometricRow[]> {
+  const { data, error } = await sc()
+    .from("kyc_biometrics")
+    .select("*")
+    .order("created_at", { ascending: true })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []) as KycBiometricRow[];
+}
+
+/** Delete biometric rows by id (used by the purge job after object removal). */
+export async function deleteKycBiometricsByIds(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const { error } = await sc().from("kyc_biometrics").delete().in("id", ids);
+  if (error) throw error;
+}
+
 export async function listRelationshipsForAdmin(params?: {
   status?: string;
   limit?: number;

@@ -1,6 +1,6 @@
 # Phase 15 — Compliance Hardening (Legal Gaps Closed)
 
-**Status:** 🔵 Planned · **Depends on:** Phase 14 (verification-gated release), Phase 12 (lifecycle guards), Phase 7 (admin/RBAC) · **Updated:** 2026-10-15
+**Status:** � In progress (§11.9.1, §11.9.2, §11.11 code paths ✅ Built) · **Depends on:** Phase 14 (verification-gated release), Phase 12 (lifecycle guards), Phase 7 (admin/RBAC) · **Updated:** 2026-10-26
 
 > **Purpose.** This phase implements the **code-side** fixes for the legal loopholes
 > identified in `legal-compliance-gaps.md` and now mandated by the blueprint v1.2
@@ -202,29 +202,55 @@ Enforcement is centralised in `isKycSatisfiedForPayout()`; the unbypassable
 
 ## 3. Biometric retention/purge + secondary-use consent (G-7, `PRIV-01`)
 
+**Status: ✅ BUILT 2026-10-26** (migration ⚠️ not yet applied).
+
 ### Goal
 Make the biometric pipeline PDPA-compliant: actually delete `purge_requested_at` rows, and
 separate KYC consent from model-training (secondary-use) consent.
 
-### Files to touch
-- `src/lib/` — add a `biometricPurgeJob()` + a cron route
-  `src/app/api/admin/biometrics/purge` (gated by `x-reconcile-secret`, mirrors
-  `deadline-sweep` / `release-sweep`).
-- `src/app/actions/kyc.ts` — split consent: add a distinct `training_consent` field +
-  version (`BIOMETRIC_TRAINING_CONSENT_VERSION`); only collect for training when granted.
-- `supabase/` — migration for `users.training_consent*` columns and (if needed) a
-  `training_consent_version` on `kyc_biometrics`.
-- `constants.ts` — add `BIOMETRIC_TRAINING_CONSENT_VERSION`.
+### What §11.11 required (and how it is honoured)
+| §11.11 obligation | Implementation |
+|---|---|
+| "the retention/purge job is **mandatory** — `purge_requested_at` rows must actually be deleted … not merely flagged" | `runBiometricPurge()` (`src/lib/biometric-purge-job.ts`) removes the private-bucket objects **and** the rows, exposed as `GET /api/admin/biometrics/purge` (gated by `x-reconcile-secret`). Order is deliberate: objects are removed **first**; if storage fails the rows are **retained**, because the row is the only pointer to that sensitive object — dropping it would orphan the image. |
+| Purge must be attributable / demonstrable | Every run writes a `BIOMETRIC_PURGE_RUN` audit entry — **including a run that deleted nothing** — with `scanned / deleted / objectsDeleted / retained / purgeRequested / ageExpired / truncated / retention` and any warnings, so "we deleted nothing" is provable rather than assumed. |
+| Retention periods, not just requests | `BIOMETRIC_RETENTION` (`constants.ts`): `KYC_RETENTION_DAYS` 365, `TRAINING_RETENTION_DAYS` 730, `PURGE_BATCH_SIZE` 200. Captures past the cap are deleted even when nobody asked. |
+| Training is a **separate, secondary purpose** with its own consent — "a single bundled KYC consent is not sufficient" | Two independent consents. `BIOMETRIC_CONSENT_VERSION` (v2) is the mandatory **identity-verification** purpose; `BIOMETRIC_TRAINING_CONSENT_VERSION` (v1) is a distinct **voluntary** opt-in, stored in separate `users.training_consent*` columns. The training box is unchecked by default and refusable without losing verification. |
+| Which purpose each capture was collected for | `kyc_biometrics.training_consent_granted` + `training_consent_version` — per-capture, not per-user, so a later withdrawal does not retroactively "consent" old captures. `isEligibleForTraining()` is the single gate. |
+| Freely-given ⇒ withdrawable | `withdrawTrainingConsentAction()` revokes **only** the training purpose; KYC images, the verified badge and existing captures are untouched. `withdrawBiometricConsentAction()` revokes everything and flags every capture for purge. |
 
-### Rules (blueprint §11.11)
-1. Purge job is mandatory (delete storage objects + rows for `purge_requested_at` set).
-2. Training is a **separate secondary purpose** with its own specific consent + basis.
+### Files
+- `supabase/phase-15-biometric-purge-consent.sql` — `users.training_consent*` columns,
+  `kyc_biometrics.training_consent_granted` / `training_consent_version`, purge indexes.
+- `src/lib/biometric-purge.ts` (pure, NOT `"use server"`) — `planBiometricPurge()`,
+  `isEligibleForTraining()`, `trainingConsentStatus()`.
+- `src/lib/biometric-purge-job.ts` — `runBiometricPurge()` (objects → rows → audit).
+- `src/app/api/admin/biometrics/purge/route.ts` — cron entrypoint.
+- `src/app/actions/kyc.ts` — two consents on submit, `withdrawTrainingConsentAction`,
+  audited withdraw/wipe.
+- `src/lib/queries.ts` — `setTrainingConsent`, `getTrainingConsentState`,
+  `listBiometricCapturesForPurge`, `deleteKycBiometricsByIds`, `isMissingColumnError`.
+- `src/lib/audit.ts` — `BIOMETRIC_PURGE_RUN`, `BIOMETRIC_PURGE_REQUESTED`,
+  `BIOMETRIC_TRAINING_CONSENT_GRANTED`, `BIOMETRIC_TRAINING_CONSENT_WITHDRAWN`.
+- UI — `dashboard/kyc` two-consent block + consent-status panel + per-capture purpose
+  badges; `admin/kyc?tab=biometrics` purpose column + corrected retention copy;
+  `admin/audit-logs` filter options.
 
 ### Definition of done
-- [ ] Purge job wired to a scheduler; deletes rows + private-bucket objects.
-- [ ] Secondary-use consent is a distinct, versioned opt-in (not bundled).
-- [ ] Unit test for purge job (rows flagged for purge are removed; non-flagged retained).
-- [ ] `tsc`, build, tests pass.
+- [x] Purge job wired to a scheduler; deletes rows + private-bucket objects.
+- [x] Secondary-use consent is a distinct, versioned opt-in (not bundled).
+- [x] Unit test for purge job (rows flagged for purge are removed; non-flagged retained).
+- [x] `tsc`, lint, build, tests pass — **188 tests / 14 files**, build **45 routes**.
+- [x] Degrades safely when the migration has not been applied (the page does **not**
+      crash; the training opt-in is hidden and captures are verification-only).
+- [ ] Migration applied in Supabase (⚠️ **not yet applied**).
+
+### Deliberate limitations
+- Retention periods are **code constants**, not yet a versioned Compliance retention
+  schedule with per-category legal holds (§11.11 data inventory).
+- The purge job deletes *biometric* captures only. KYC identity documents in
+  `kyc-documents` follow a separate retention decision (not modelled yet).
+- No scheduler is provisioned by the app — the route must be called by an external cron
+  (same operational model as the money sweeps).
 
 ---
 

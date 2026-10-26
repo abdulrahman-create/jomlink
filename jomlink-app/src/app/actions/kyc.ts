@@ -9,11 +9,16 @@ import {
   createKycRecord,
   createKycBiometric,
   getKycBiometricsByUser,
+  getTrainingConsentState,
   setBiometricConsent,
+  setTrainingConsent,
   isMemberVerifiedForPayout,
   upsertProfile,
 } from "@/lib/queries";
-import { BIOMETRIC_CONSENT_VERSION } from "@/lib/constants";
+import {
+  BIOMETRIC_CONSENT_VERSION,
+  BIOMETRIC_TRAINING_CONSENT_VERSION,
+} from "@/lib/constants";
 import { kycDevBypassState } from "@/lib/kyc-dev-bypass";
 import { recordAuditLog, AUDIT_ACTIONS } from "@/lib/audit";
 
@@ -195,7 +200,13 @@ export async function submitKycAction(
  * Privacy:
  *  • Images go to the PRIVATE `kyc-biometrics` bucket (never public URLs).
  *  • Consent is explicit and recorded (version + timestamp) on the user row.
- *  • `wipeBiometricDataAction` lets the member delete everything on request.
+ *  • **Two separate consents** (§11.11): the identity-verification consent is
+ *    required to store the capture at all; the model-training consent is a
+ *    SEPARATE, voluntary opt-in. Refusing training does not block verification,
+ *    and `kyc_biometrics.training_consent_granted` records which purpose each
+ *    capture was actually collected for.
+ *  • `withdrawBiometricConsentAction` flags the member's captures for purge and the
+ *    scheduled purge job DELETES them (§11.11 — not just a flag).
  */
 export async function submitKycBiometricAction(
   prevState: KycState | undefined,
@@ -204,14 +215,28 @@ export async function submitKycBiometricAction(
   const user = await getCurrentUser();
   if (!user) return { error: "Not authenticated." };
 
-  // Explicit consent is mandatory.
+  // EXPLICIT KYC consent is mandatory — it is the lawful basis for holding a
+  // face image and an ID photo at all.
   const consent = formData.get("consent");
   if (consent !== "on" && consent !== "true") {
     return {
       error:
-        "Consent is required. Please tick the consent box to store your face and ID images for identity verification and model training.",
+        "Consent is required. Please tick the box to store your face and ID images for identity verification.",
     };
   }
+
+  // Model training is a SEPARATE secondary purpose (§11.11). It is voluntary:
+  // leaving it unticked stores the capture for verification only and excludes it
+  // from any training set.
+  const trainingConsent =
+    formData.get("trainingConsent") === "on" ||
+    formData.get("trainingConsent") === "true";
+  // Whether the per-capture purpose marker can be written at all. Checked with
+  // the same helper the page uses, so a missing migration degrades instead of
+  // failing the member's capture (§11.11 columns).
+  const trainingConsentColumnsReady = (
+    await getTrainingConsentState(user.id)
+  ).columnsReady;
 
   const selfie = formData.get("selfie");
   const idDocument = formData.get("idDocument");
@@ -259,8 +284,17 @@ export async function submitKycBiometricAction(
     if (selfieErr) throw selfieErr;
     if (idErr) throw idErr;
 
-    // Record consent on the member's row (explicit + versioned).
+    // Record consent on the member's row (explicit + versioned). The training
+    // consent is stored separately and only when it was actually given, so the
+    // two purposes can never be inferred from each other.
     await setBiometricConsent(user.id, true, BIOMETRIC_CONSENT_VERSION);
+    // `setTrainingConsent` degrades to a no-op when the migration has not been
+    // applied (42703), so the member's capture still succeeds.
+    await setTrainingConsent(
+      user.id,
+      trainingConsent,
+      BIOMETRIC_TRAINING_CONSENT_VERSION
+    );
 
     await createKycBiometric({
       user_id: user.id,
@@ -273,8 +307,30 @@ export async function submitKycBiometricAction(
       capture_source: captureSource,
       liveness_passed: livenessPassed,
       consent_version: BIOMETRIC_CONSENT_VERSION,
+      // Purpose marker for this specific capture (§11.11). Omitted entirely
+      // when the column does not exist yet, so the capture is still stored
+      // (verification-only is the correct default anyway).
+      ...(trainingConsentColumnsReady
+        ? {
+            training_consent_granted: trainingConsent,
+            training_consent_version: trainingConsent
+              ? BIOMETRIC_TRAINING_CONSENT_VERSION
+              : null,
+          }
+        : {}),
       label_status: "UNLABELLED",
     });
+
+    // Every granted training consent is attributable (§11.11, §11.9.2 rule 4).
+    if (trainingConsent) {
+      await recordAuditLog({
+        adminId: null,
+        action: AUDIT_ACTIONS.BIOMETRIC_TRAINING_CONSENT_GRANTED,
+        entity: "USER",
+        entityId: user.id,
+        details: { version: BIOMETRIC_TRAINING_CONSENT_VERSION },
+      });
+    }
 
     revalidatePath("/dashboard/kyc");
     revalidatePath("/admin/kyc");
@@ -287,32 +343,78 @@ export async function submitKycBiometricAction(
 
 /**
  * Withdraw biometric consent + mark all of the member's captures for purge.
- * (A hard delete of storage objects is performed by an admin/retention job, so
- * accidental data loss is impossible from the client side.)
+ *
+ * The purge is performed by the scheduled retention job
+ * (`/api/admin/biometrics/purge` → `runBiometricPurge`), NOT here, so a member
+ * click cannot block on storage. §11.11 requires that job to actually delete the
+ * objects AND the rows — it is no longer flag-only.
+ *
+ * Training consent is withdrawn at the same time, because the member is asking
+ * us to stop holding the images entirely.
  */
 export async function withdrawBiometricConsentAction(): Promise<void> {
   const user = await getCurrentUser();
   if (!user) return;
 
   await setBiometricConsent(user.id, false, BIOMETRIC_CONSENT_VERSION);
+  await setTrainingConsent(user.id, false, BIOMETRIC_TRAINING_CONSENT_VERSION);
 
   const records = await getKycBiometricsByUser(user.id);
   const db = jomlinkSchema();
   const now = new Date().toISOString();
+  let flagged = 0;
   for (const r of records) {
     if (r.purge_requested_at) continue;
     await db
       .from("kyc_biometrics")
       .update({ purge_requested_at: now, updated_at: now })
       .eq("id", r.id);
+    flagged += 1;
   }
+
+  await recordAuditLog({
+    adminId: null,
+    action: AUDIT_ACTIONS.BIOMETRIC_PURGE_REQUESTED,
+    entity: "USER",
+    entityId: user.id,
+    details: { captures: flagged, reason: "CONSENT_WITHDRAWN" },
+  });
+
+  revalidatePath("/dashboard/kyc");
+  revalidatePath("/admin/kyc");
+  revalidatePath("/dashboard/wallet");
+}
+
+/**
+ * Withdraw ONLY the model-training consent (§11.11 secondary purpose).
+ *
+ * Identity verification and the images held for it are untouched — a member can
+ * opt out of their data being used to train a face-match model without losing
+ * their verified badge. Their captures stop being eligible as training data
+ * (`isEligibleForTraining`) and their identity images still age out under the
+ * retention policy.
+ */
+export async function withdrawTrainingConsentAction(): Promise<void> {
+  const user = await getCurrentUser();
+  if (!user) return;
+
+  await setTrainingConsent(user.id, false, BIOMETRIC_TRAINING_CONSENT_VERSION);
+
+  await recordAuditLog({
+    adminId: null,
+    action: AUDIT_ACTIONS.BIOMETRIC_TRAINING_CONSENT_WITHDRAWN,
+    entity: "USER",
+    entityId: user.id,
+    details: { version: BIOMETRIC_TRAINING_CONSENT_VERSION },
+  });
 
   revalidatePath("/dashboard/kyc");
   revalidatePath("/admin/kyc");
 }
 
 /**
- * Hard-delete the member's biometric objects + rows (right-to-erasure).
+ * Hard-delete the member's biometric objects + rows (right-to-erasure),
+ * performed immediately rather than waiting for the scheduled purge job.
  */
 export async function wipeBiometricDataAction(): Promise<void> {
   const user = await getCurrentUser();
@@ -336,6 +438,15 @@ export async function wipeBiometricDataAction(): Promise<void> {
     .eq("user_id", user.id);
 
   await setBiometricConsent(user.id, false, BIOMETRIC_CONSENT_VERSION);
+  await setTrainingConsent(user.id, false, BIOMETRIC_TRAINING_CONSENT_VERSION);
+
+  await recordAuditLog({
+    adminId: null,
+    action: AUDIT_ACTIONS.BIOMETRIC_PURGE_REQUESTED,
+    entity: "USER",
+    entityId: user.id,
+    details: { captures: records.length, immediate: true },
+  });
 
   revalidatePath("/dashboard/kyc");
   revalidatePath("/admin/kyc");
